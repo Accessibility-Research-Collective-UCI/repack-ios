@@ -11,6 +11,9 @@ struct REPACKHomeView: View {
 
     var body: some View {
         Form {
+            if model.shouldOfferRestart {
+                interruptedRunSection
+            }
             modelSection
             imageSection
             promptSection
@@ -35,7 +38,9 @@ struct REPACKHomeView: View {
             HStack {
                 Image(systemName: modelIcon)
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(model.phase == .ready ? .green : .secondary)
+                    .foregroundStyle(
+                        model.isEngineReady || model.phase == .output ? .green : .secondary
+                    )
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading) {
@@ -69,6 +74,19 @@ struct REPACKHomeView: View {
                 }
                 .pickerStyle(.navigationLink)
                 .disabled(model.isBusy)
+            }
+        }
+    }
+
+    private var interruptedRunSection: some View {
+        Section("Interrupted Caption") {
+            Label {
+                Text(
+                    "The previous caption did not finish. Your image and settings were restored."
+                )
+            } icon: {
+                Image(systemName: "arrow.counterclockwise.circle.fill")
+                    .accessibilityHidden(true)
             }
         }
     }
@@ -213,7 +231,7 @@ struct REPACKHomeView: View {
 
     private var captionSection: some View {
         Button(action: captionAction) {
-            Text("Caption Image")
+            Text(model.shouldOfferRestart ? "Restart Captioning" : "Caption Image")
                 .frame(maxWidth: .infinity, alignment: .center)
         }
         .buttonStyle(.borderedProminent)
@@ -248,16 +266,20 @@ struct REPACKHomeView: View {
             String(localized: "Ready")
         case .processing:
             String(localized: "Processing")
+        case .interrupted:
+            String(localized: "Ready to restart")
         case .output:
             String(localized: "Caption complete")
         case .failed:
-            String(localized: "Model unavailable")
+            model.isEngineReady
+                ? String(localized: "Ready to retry")
+                : String(localized: "Model unavailable")
         }
     }
 
     private var modelIcon: String {
         switch model.phase {
-        case .ready, .output:
+        case .ready, .interrupted, .output:
             "checkmark.circle.fill"
         case .failed:
             "exclamationmark.triangle.fill"

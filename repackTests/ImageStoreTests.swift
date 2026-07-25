@@ -96,7 +96,10 @@ struct ImageStoreTests {
     func modelImageLifecycle() async throws {
         let fixture = try Fixture()
         defer { fixture.removeDirectory() }
-        let model = REPACKViewModel(imageStore: fixture.store)
+        let model = REPACKViewModel(
+            imageStore: fixture.store,
+            pendingRunStore: TestPendingCaptionRunStore()
+        )
         let firstData = try makeJPEG(width: 800, height: 600)
         let secondData = try makeJPEG(width: 600, height: 800)
 
@@ -119,6 +122,83 @@ struct ImageStoreTests {
 
         let orphanURL = try await fixture.store.store(data: firstData)
         await model.prepareForLaunch()
+        #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
+    }
+
+    @Test("Launch restoration keeps the interrupted image and settings")
+    @MainActor
+    func restoresInterruptedRunBeforeOrphanCleanup() async throws {
+        let fixture = try Fixture()
+        defer { fixture.removeDirectory() }
+        let retainedURL = try await fixture.store.store(
+            data: makeJPEG(width: 800, height: 600)
+        )
+        let orphanURL = try await fixture.store.store(
+            data: makeJPEG(width: 640, height: 480)
+        )
+        let pendingRunStore = TestPendingCaptionRunStore()
+        pendingRunStore.run = PendingCaptionRun(
+            imageFilename: retainedURL.lastPathComponent,
+            modelFilename: "missing-model.litertlm",
+            promptChoice: "custom",
+            customPrompt: "Describe the shipping label.",
+            sampleCount: 7,
+            threshold: 0.65
+        )
+        let model = REPACKViewModel(
+            imageStore: fixture.store,
+            pendingRunStore: pendingRunStore
+        )
+
+        await model.prepareForLaunch()
+
+        #expect(model.selectedImageURL == retainedURL)
+        #expect(model.promptChoice == .custom)
+        #expect(model.customPrompt == "Describe the shipping label.")
+        #expect(model.sampleCount == 7)
+        #expect(model.threshold == 0.65)
+        #expect(model.hasPendingCaptionRun)
+        #expect(FileManager.default.fileExists(atPath: retainedURL.path))
+        #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
+
+        await model.removeAttachedImage()
+        #expect(pendingRunStore.run == nil)
+        #expect(!model.hasPendingCaptionRun)
+        #expect(!model.shouldOfferRestart)
+        #expect(model.promptChoice == .describe)
+        #expect(model.customPrompt.isEmpty)
+        #expect(model.sampleCount == 5)
+        #expect(model.threshold == 0.5)
+        #expect(!FileManager.default.fileExists(atPath: retainedURL.path))
+    }
+
+    @Test("Missing interrupted images discard recovery metadata")
+    @MainActor
+    func discardsMissingInterruptedImage() async throws {
+        let fixture = try Fixture()
+        defer { fixture.removeDirectory() }
+        let orphanURL = try await fixture.store.store(
+            data: makeJPEG(width: 640, height: 480)
+        )
+        let pendingRunStore = TestPendingCaptionRunStore()
+        pendingRunStore.run = PendingCaptionRun(
+            imageFilename: "missing.jpg",
+            modelFilename: "missing-model.litertlm",
+            promptChoice: "describe",
+            customPrompt: "",
+            sampleCount: 5,
+            threshold: 0.5
+        )
+        let model = REPACKViewModel(
+            imageStore: fixture.store,
+            pendingRunStore: pendingRunStore
+        )
+
+        await model.prepareForLaunch()
+
+        #expect(model.selectedImageURL == nil)
+        #expect(!model.hasPendingCaptionRun)
+        #expect(pendingRunStore.run == nil)
         #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
     }
 
@@ -205,5 +285,22 @@ struct ImageStoreTests {
             return number.intValue
         }
         return value as? Int
+    }
+}
+
+@MainActor
+private final class TestPendingCaptionRunStore: PendingCaptionRunStoring {
+    var run: PendingCaptionRun?
+
+    func load() -> PendingCaptionRun? {
+        run
+    }
+
+    func save(_ run: PendingCaptionRun) {
+        self.run = run
+    }
+
+    func clear() {
+        run = nil
     }
 }

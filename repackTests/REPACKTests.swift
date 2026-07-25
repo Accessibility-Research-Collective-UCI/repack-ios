@@ -328,6 +328,117 @@ struct REPACKTests {
         #expect(!viewModel.isRegenerating)
     }
 
+    @Test("Foreground-only captioning ignores inactive and cancels on background")
+    func foregroundOnlyBackgroundCancellation() async throws {
+        let fixture = Fixture()
+        fixture.factory.visionState.captionDelay = .seconds(5)
+        let executionCoordinator = FakeCaptionExecutionCoordinator(mode: .foregroundOnly)
+        let pendingRunStore = FakePendingCaptionRunStore()
+        let viewModel = REPACKViewModel(
+            engineFactory: fixture.factory,
+            captionExecutionCoordinator: executionCoordinator,
+            pendingRunStore: pendingRunStore
+        )
+
+        await viewModel.selectModel(
+            LocalModel(url: fixture.modelURL, isBundled: false)
+        )
+        viewModel.selectedImageURL = fixture.imageURL
+        viewModel.sampleCount = 2
+        viewModel.startProcessing()
+
+        await viewModel.handleScenePhase(.inactive)
+        #expect(viewModel.phase == .processing)
+
+        await viewModel.handleScenePhase(.background)
+
+        guard case .interrupted = viewModel.phase else {
+            Issue.record("Expected foreground-only captioning to become interrupted")
+            return
+        }
+        #expect(fixture.factory.visionState.cancellationCount == 1)
+        #expect(executionCoordinator.completions == [false])
+        #expect(pendingRunStore.run != nil)
+    }
+
+    @Test("Model loading waits for an active scene")
+    func modelLoadingWaitsForActiveScene() async {
+        let fixture = Fixture()
+        let viewModel = REPACKViewModel(engineFactory: fixture.factory)
+        viewModel.modelURL = fixture.modelURL
+        viewModel.localModels = [
+            LocalModel(url: fixture.modelURL, isBundled: false)
+        ]
+        viewModel.phase = .loadingModel
+
+        await viewModel.handleScenePhase(.inactive)
+        await viewModel.handleScenePhase(.background)
+
+        #expect(fixture.factory.events.isEmpty)
+        #expect(viewModel.phase == .loadingModel)
+
+        await viewModel.handleScenePhase(.active)
+
+        #expect(fixture.factory.events == [.validate, .makeVision])
+        #expect(viewModel.phase == .ready)
+    }
+
+    @Test("Background-protected captioning continues when the scene backgrounds")
+    func protectedBackgroundContinuation() async throws {
+        let fixture = Fixture()
+        fixture.factory.visionState.captionDelay = .seconds(5)
+        let executionCoordinator = FakeCaptionExecutionCoordinator(
+            mode: .backgroundProtected
+        )
+        let pendingRunStore = FakePendingCaptionRunStore()
+        let viewModel = REPACKViewModel(
+            engineFactory: fixture.factory,
+            captionExecutionCoordinator: executionCoordinator,
+            pendingRunStore: pendingRunStore
+        )
+
+        await viewModel.selectModel(
+            LocalModel(url: fixture.modelURL, isBundled: false)
+        )
+        viewModel.selectedImageURL = fixture.imageURL
+        viewModel.startProcessing()
+
+        await viewModel.handleScenePhase(.background)
+
+        #expect(viewModel.phase == .processing)
+        #expect(executionCoordinator.completions.isEmpty)
+        #expect(pendingRunStore.run != nil)
+
+        await viewModel.resetRun()
+        #expect(pendingRunStore.run == nil)
+        #expect(executionCoordinator.completions == [false])
+    }
+
+    @Test("Successful captioning clears recovery metadata and completes the task")
+    func successfulRunClearsRecoveryState() async throws {
+        let fixture = Fixture()
+        let executionCoordinator = FakeCaptionExecutionCoordinator(mode: .foregroundOnly)
+        let pendingRunStore = FakePendingCaptionRunStore()
+        let viewModel = REPACKViewModel(
+            engineFactory: fixture.factory,
+            captionExecutionCoordinator: executionCoordinator,
+            pendingRunStore: pendingRunStore
+        )
+
+        await viewModel.selectModel(
+            LocalModel(url: fixture.modelURL, isBundled: false)
+        )
+        viewModel.selectedImageURL = fixture.imageURL
+        viewModel.sampleCount = 2
+        viewModel.startProcessing()
+        try await waitUntil { viewModel.phase == .output }
+
+        #expect(pendingRunStore.run == nil)
+        #expect(!viewModel.hasPendingCaptionRun)
+        #expect(executionCoordinator.completions == [true])
+        #expect(!executionCoordinator.reportedProgress.isEmpty)
+    }
+
     @Test("Structured atomization tool publishes one isolated array")
     func structuredToolCapture() async throws {
         let sink = AtomicStatementsSink()
@@ -539,6 +650,7 @@ private final class FakeEngineState {
     var atomizedCaptions: [String] = []
     var repackagedAtomics: [[String]] = []
     var cancellationCount = 0
+    var captionDelay: Duration?
 }
 
 @MainActor
@@ -550,6 +662,9 @@ private final class FakeInferenceEngine: REPACKInferenceEngine {
     }
 
     func generateCaption(image: URL, prompt: String, seed: Int) async throws -> String {
+        if let captionDelay = state.captionDelay {
+            try await Task.sleep(for: captionDelay)
+        }
         state.captionSeeds.append(seed)
         return state.captionResponses[seed] ?? "caption \(seed)"
     }
@@ -566,5 +681,60 @@ private final class FakeInferenceEngine: REPACKInferenceEngine {
 
     func cancel() async {
         state.cancellationCount += 1
+    }
+}
+
+@MainActor
+private final class FakeCaptionExecutionCoordinator: CaptionExecutionCoordinating {
+    let mode: CaptionExecutionMode
+    var reportedProgress: [REPACKProgress] = []
+    var completions: [Bool] = []
+    private var expirationHandler: (@MainActor () -> Void)?
+    private var isActive = false
+
+    init(mode: CaptionExecutionMode) {
+        self.mode = mode
+    }
+
+    func register() {}
+
+    func submit(
+        start: @escaping @MainActor () -> Void,
+        expiration: @escaping @MainActor () -> Void
+    ) -> CaptionExecutionMode {
+        isActive = true
+        expirationHandler = expiration
+        if mode == .backgroundProtected {
+            start()
+        }
+        return mode
+    }
+
+    func report(_ progress: REPACKProgress) {
+        reportedProgress.append(progress)
+    }
+
+    func complete(success: Bool) {
+        guard isActive else { return }
+        isActive = false
+        completions.append(success)
+        expirationHandler = nil
+    }
+}
+
+@MainActor
+private final class FakePendingCaptionRunStore: PendingCaptionRunStoring {
+    var run: PendingCaptionRun?
+
+    func load() -> PendingCaptionRun? {
+        run
+    }
+
+    func save(_ run: PendingCaptionRun) {
+        self.run = run
+    }
+
+    func clear() {
+        run = nil
     }
 }

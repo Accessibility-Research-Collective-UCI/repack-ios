@@ -24,12 +24,32 @@
         }
       }
     },
+    "%lld of %lld captions remaining" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld captions remaining"
+          }
+        }
+      }
+    },
     "%lld of %lld statements" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$lld of %2$lld statements"
+          }
+        }
+      }
+    },
+    "%lld of %lld statements remaining" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld statements remaining"
           }
         }
       }
@@ -44,6 +64,9 @@
 
     },
     "A compatible model is required." : {
+
+    },
+    "A higher threshold retain only details supported more consistently across caption samples." : {
 
     },
     "Atomic Statements and Scores" : {
@@ -98,6 +121,24 @@
 
     },
     "Caption updated." : {
+
+    },
+    "Captioning did not finish. Restart Captioning to begin again from the start." : {
+
+    },
+    "Captioning Image" : {
+
+    },
+    "Captioning Interrupted" : {
+
+    },
+    "Captioning stopped because this device cannot use the GPU while REPACK is in the background." : {
+
+    },
+    "Captioning was interrupted. Restart Captioning to begin again from the start." : {
+
+    },
+    "Captioning was stopped by the system. Restart Captioning to begin again from the start." : {
 
     },
     "Choose a compatible .litertlm model bundle." : {
@@ -158,9 +199,6 @@
     "Generation Details" : {
 
     },
-    "Higher values retain only details supported more consistently across samples." : {
-
-    },
     "Image" : {
 
     },
@@ -174,6 +212,12 @@
 
     },
     "Information Verification" : {
+
+    },
+    "Interrupted" : {
+
+    },
+    "Interrupted Caption" : {
 
     },
     "Loading model" : {
@@ -260,6 +304,9 @@
     "Photos" : {
 
     },
+    "Preparing captioning models…" : {
+
+    },
     "Preparing REPACK" : {
 
     },
@@ -290,6 +337,12 @@
     "Ready" : {
 
     },
+    "Ready to restart" : {
+
+    },
+    "Ready to retry" : {
+
+    },
     "Remove Image" : {
 
     },
@@ -314,6 +367,9 @@
     "REPACK Stopped" : {
 
     },
+    "REPACK was interrupted." : {
+
+    },
     "Repackaging" : {
 
     },
@@ -324,6 +380,9 @@
 
     },
     "Reset" : {
+
+    },
+    "Restart Captioning" : {
 
     },
     "Result: %@" : {
@@ -380,6 +439,9 @@
     "Start Over?" : {
 
     },
+    "Stopped" : {
+
+    },
     "The atomic statements could not be prepared for repackaging." : {
 
     },
@@ -404,6 +466,9 @@
     "The prepared image could not be saved." : {
 
     },
+    "The previous caption did not finish. Your image and settings were restored." : {
+
+    },
     "The selected file is not a compatible LiteRT-LM model." : {
 
     },
@@ -425,7 +490,7 @@
     "The vision model is not ready." : {
 
     },
-    "This will remove the current caption and image." : {
+    "This will remove the current image and REPACK-processed caption." : {
 
     },
     "Time Elapsed" : {

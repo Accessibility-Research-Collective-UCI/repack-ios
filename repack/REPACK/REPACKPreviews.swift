@@ -26,10 +26,23 @@ import SwiftUI
     .environment(\.dynamicTypeSize, .accessibility3)
 }
 
+#Preview("Home · Interrupted") {
+    NavigationStack {
+        REPACKHomeView(
+            model: .previewInterrupted,
+            selectedPhotoItem: .constant(nil),
+            showCamera: .constant(false),
+            showModelManager: .constant(false),
+            captionAction: {}
+        )
+    }
+}
+
 #Preview("Generating Captions") {
     NavigationStack {
         REPACKRunView(
             model: .previewProcessing(.sampling(completed: 2, total: 6)),
+            restartAction: {},
             resetAction: {}
         )
     }
@@ -39,6 +52,7 @@ import SwiftUI
     NavigationStack {
         REPACKRunView(
             model: .previewProcessing(.atomizing(completed: 2, total: 6)),
+            restartAction: {},
             resetAction: {}
         )
     }
@@ -48,6 +62,7 @@ import SwiftUI
     NavigationStack {
         REPACKRunView(
             model: .previewProcessing(.sampling(completed: 2, total: 6)),
+            restartAction: {},
             resetAction: {}
         )
     }
@@ -56,15 +71,25 @@ import SwiftUI
 
 #Preview("Output") {
     NavigationStack {
-        REPACKRunView(model: .previewOutput, resetAction: {})
+        REPACKRunView(model: .previewOutput, restartAction: {}, resetAction: {})
     }
 }
 
 #Preview("Output · Accessibility") {
     NavigationStack {
-        REPACKRunView(model: .previewOutput, resetAction: {})
+        REPACKRunView(model: .previewOutput, restartAction: {}, resetAction: {})
     }
     .environment(\.dynamicTypeSize, .accessibility3)
+}
+
+#Preview("Interrupted Caption") {
+    NavigationStack {
+        REPACKRunView(
+            model: .previewInterrupted,
+            restartAction: {},
+            resetAction: {}
+        )
+    }
 }
 
 private extension REPACKViewModel {
@@ -121,6 +146,19 @@ private extension REPACKViewModel {
                 REPACKStageTiming(stage: .repackaging, duration: .seconds(0.8))
             ]
         )
+        return model
+    }
+
+    static var previewInterrupted: REPACKViewModel {
+        let model = previewModel(
+            phase: .interrupted(
+                String(
+                    localized:
+                        "Captioning did not finish. Restart Captioning to begin again from the start."
+                )
+            )
+        )
+        model.selectedImageURL = previewImageURL
         return model
     }
 

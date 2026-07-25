@@ -1,7 +1,9 @@
 import Accessibility
 import Foundation
 import Observation
+import SwiftUI
 import UIKit
+
 @MainActor
 @Observable
 final class REPACKViewModel {
@@ -11,6 +13,7 @@ final class REPACKViewModel {
         case downloading(name: String, progress: Double)
         case ready
         case processing
+        case interrupted(String)
         case output
         case failed(String)
     }
@@ -44,10 +47,13 @@ final class REPACKViewModel {
     var result: REPACKResult?
     var isRegenerating = false
     var errorMessage: String?
+    private(set) var hasPendingCaptionRun = false
     private let modelManager: ModelManager
     private let imageStore: ImageStore
     private let engineFactory: any REPACKEngineFactory
     private let devicePolicy: REPACKDevicePolicy
+    private let captionExecutionCoordinator: any CaptionExecutionCoordinating
+    private let pendingRunStore: any PendingCaptionRunStoring
     private let clock = ContinuousClock()
     private var pipeline: REPACK?
     private var processTask: Task<Void, Never>?
@@ -56,16 +62,26 @@ final class REPACKViewModel {
     private var processStartedAt: ContinuousClock.Instant?
     private var completedElapsed: Duration?
     private var thresholdRequestID = UUID()
+    private var currentRunID: UUID?
+    private var executionMode: CaptionExecutionMode?
+    private var isLoadingPipeline = false
+
     init(
         modelManager: ModelManager? = nil,
         imageStore: ImageStore = .shared,
         engineFactory: (any REPACKEngineFactory)? = nil,
-        devicePolicy: REPACKDevicePolicy = .current
+        devicePolicy: REPACKDevicePolicy = .current,
+        captionExecutionCoordinator: any CaptionExecutionCoordinating =
+            CaptionExecutionCoordinator.shared,
+        pendingRunStore: any PendingCaptionRunStoring =
+            UserDefaultsPendingCaptionRunStore()
     ) {
         self.modelManager = modelManager ?? ModelManager()
         self.imageStore = imageStore
         self.engineFactory = engineFactory ?? LiteRTREPACKEngineFactory.shared
         self.devicePolicy = devicePolicy
+        self.captionExecutionCoordinator = captionExecutionCoordinator
+        self.pendingRunStore = pendingRunStore
     }
     var selectedModelName: String {
         guard let modelURL else {
@@ -110,18 +126,32 @@ final class REPACKViewModel {
         switch phase {
         case .loadingModel, .downloading, .processing:
             true
-        case .missingModel, .ready, .output, .failed:
+        case .missingModel, .ready, .interrupted, .output, .failed:
             false
         }
     }
+
     var isEngineReady: Bool {
-        pipeline != nil && phase == .ready
+        guard pipeline != nil else { return false }
+        return switch phase {
+        case .ready, .interrupted, .failed:
+            true
+        case .missingModel, .loadingModel, .downloading, .processing, .output:
+            false
+        }
     }
 
     var canCaption: Bool {
         isEngineReady
             && selectedImageURL != nil
             && !samplePrompt.resolvedText.isEmpty
+    }
+
+    var shouldOfferRestart: Bool {
+        guard phase != .processing else { return false }
+        if hasPendingCaptionRun { return true }
+        if case .interrupted = phase { return true }
+        return false
     }
 
     var samplePrompt: REPACKPrompt {
@@ -146,19 +176,24 @@ final class REPACKViewModel {
 
 extension REPACKViewModel {
     func prepareForLaunch() async {
+        let pendingRun = await restorePendingRun()
         try? await imageStore.removeOrphans(keeping: ownedImageURLs)
-        await refreshLocalModels()
-        guard modelURL != nil else { return }
-        await loadSelectedModel()
+        await refreshLocalModels(preferredModelFilename: pendingRun?.modelFilename)
     }
 
-    func refreshLocalModels() async {
+    func refreshLocalModels(preferredModelFilename: String? = nil) async {
         let refreshed = modelManager.refreshLocalModels(currentModelURL: modelURL)
         localModels = refreshed.models
+        let preferredSelection = preferredModelFilename.flatMap { filename in
+            refreshed.models.first { model in
+                model.url.lastPathComponent == filename && supportsModel(at: model.url)
+            }?.url
+        }
         let supportedSelection = refreshed.selectedModelURL.flatMap { selectedURL in
             supportsModel(at: selectedURL) ? selectedURL : nil
         }
-        let resolvedSelection = supportedSelection ?? selectableLocalModels.first?.url
+        let resolvedSelection =
+            preferredSelection ?? supportedSelection ?? selectableLocalModels.first?.url
         let selectionChanged = !ModelManager.sameFile(modelURL, resolvedSelection)
         modelURL = resolvedSelection
 
@@ -263,14 +298,24 @@ extension REPACKViewModel {
     }
 
     func removeAttachedImage() async {
-        guard let imageURL = selectedImageURL else { return }
+        clearPendingCaptionRun()
+        let imageURL = selectedImageURL
         selectedImageURL = nil
-        ownedImageURLs.remove(imageURL)
-        await imageStore.remove([imageURL])
+        resetCaptionState()
+
+        if let imageURL {
+            ownedImageURLs.remove(imageURL)
+            await imageStore.remove([imageURL])
+        }
     }
 
     func startProcessing() {
-        guard let pipeline, let image = selectedImageURL, canCaption else { return }
+        guard let pipeline,
+              let image = selectedImageURL,
+              let modelURL,
+              canCaption else {
+            return
+        }
 
         thresholdTask?.cancel()
         processTask?.cancel()
@@ -284,31 +329,62 @@ extension REPACKViewModel {
         let prompt = samplePrompt
         let count = sampleCount
         let requestedThreshold = threshold
-        processTask = Task {
-            do {
-                let generatedResult = try await pipeline.process(
-                    image: image,
-                    samplePrompt: prompt,
-                    sampleCount: count,
-                    threshold: requestedThreshold
-                ) { [weak self] update in
-                    self?.progress = update
-                    self?.announceProgress(update)
-                }
-                try Task.checkCancellation()
-                result = generatedResult
-                threshold = generatedResult.threshold
-                finishTiming()
-                phase = .output
-                announce(String(localized: "Caption complete."))
-            } catch is CancellationError {
-                finishTiming()
-                phase = self.pipeline == nil ? .missingModel : .ready
-            } catch {
-                finishTiming()
-                fail(error)
-            }
+        let runID = UUID()
+        currentRunID = runID
+        savePendingRun(
+            image: image,
+            model: modelURL,
+            count: count,
+            threshold: requestedThreshold
+        )
+
+        let start: @MainActor @Sendable () -> Void = { [weak self] in
+            guard let self else { return }
+            self.beginProcessing(
+                runID: runID,
+                pipeline: pipeline,
+                image: image,
+                prompt: prompt,
+                count: count,
+                threshold: requestedThreshold
+            )
         }
+        let expiration: @MainActor @Sendable () -> Void = { [weak self] in
+            self?.expireProcessing()
+        }
+        executionMode = captionExecutionCoordinator.submit(
+            start: start,
+            expiration: expiration
+        )
+
+        if executionMode == .foregroundOnly {
+            start()
+        }
+    }
+
+    func handleScenePhase(_ scenePhase: ScenePhase) async {
+        if scenePhase == .active {
+            guard pipeline == nil,
+                  modelURL != nil,
+                  phase == .loadingModel || phase == .missingModel else {
+                return
+            }
+            await loadSelectedModel()
+            return
+        }
+
+        guard scenePhase == .background,
+              phase == .processing,
+              executionMode == .foregroundOnly else {
+            return
+        }
+
+        await interruptProcessing(
+            message: String(
+                localized:
+                    "Captioning stopped because this device cannot use the GPU while REPACK is in the background."
+            )
+        )
     }
 
     func updateThreshold(_ newValue: Double) {
@@ -345,10 +421,14 @@ extension REPACKViewModel {
     }
 
     func cancel() async {
-        processTask?.cancel()
-        thresholdTask?.cancel()
+        currentRunID = nil
+        let activeProcessTask = processTask
         processTask = nil
+        activeProcessTask?.cancel()
+        thresholdTask?.cancel()
         thresholdTask = nil
+        captionExecutionCoordinator.complete(success: false)
+        executionMode = nil
         await pipeline?.cancel()
         finishTiming()
         phase = pipeline == nil ? .missingModel : .ready
@@ -357,18 +437,13 @@ extension REPACKViewModel {
 
     func resetRun() async {
         await cancel()
-        result = nil
-        progress = nil
-        threshold = 0.5
-        completedElapsed = nil
-        errorMessage = nil
-        pipeline?.discardCurrentRun()
         await removeAttachedImage()
     }
 }
 
 private extension REPACKViewModel {
     private func loadSelectedModel() async {
+        guard !isLoadingPipeline else { return }
         guard let modelURL else {
             phase = .missingModel
             return
@@ -380,6 +455,8 @@ private extension REPACKViewModel {
 
         phase = .loadingModel
         errorMessage = nil
+        isLoadingPipeline = true
+        defer { isLoadingPipeline = false }
         do {
             guard let processingModelURL = ModelManager.processingModelURL(
                 for: modelURL,
@@ -394,7 +471,14 @@ private extension REPACKViewModel {
                 engineFactory: engineFactory,
                 devicePolicy: devicePolicy
             )
-            phase = .ready
+            phase = hasPendingCaptionRun
+                ? .interrupted(
+                    String(
+                        localized:
+                            "Captioning did not finish. Restart Captioning to begin again from the start."
+                    )
+                )
+                : .ready
             announce(String(localized: "Model ready."))
         } catch is CancellationError {
             phase = .missingModel
@@ -406,10 +490,14 @@ private extension REPACKViewModel {
 
     private func discardPipelineAndRun() async {
         thresholdRequestID = UUID()
-        processTask?.cancel()
-        thresholdTask?.cancel()
-        await pipeline?.cancel()
+        currentRunID = nil
+        let activeProcessTask = processTask
         processTask = nil
+        activeProcessTask?.cancel()
+        thresholdTask?.cancel()
+        captionExecutionCoordinator.complete(success: false)
+        executionMode = nil
+        await pipeline?.cancel()
         thresholdTask = nil
         pipeline = nil
         result = nil
@@ -421,13 +509,51 @@ private extension REPACKViewModel {
     }
 
     private func replaceAttachedImage(with imageURL: URL) async throws {
+        clearPendingCaptionRun()
         let previousImageURL = selectedImageURL
         selectedImageURL = imageURL
         ownedImageURLs.insert(imageURL)
 
+        switch phase {
+        case .interrupted, .failed:
+            result = nil
+            progress = nil
+            completedElapsed = nil
+            errorMessage = nil
+            pipeline?.discardCurrentRun()
+            phase = pipeline == nil ? .loadingModel : .ready
+        default:
+            break
+        }
+
         if let previousImageURL {
             ownedImageURLs.remove(previousImageURL)
             await imageStore.remove([previousImageURL])
+        }
+    }
+
+    private func resetCaptionState() {
+        thresholdRequestID = UUID()
+        thresholdTask?.cancel()
+        thresholdTask = nil
+        result = nil
+        progress = nil
+        promptChoice = .describe
+        customPrompt = ""
+        sampleCount = 5
+        threshold = 0.5
+        processStartedAt = nil
+        completedElapsed = nil
+        isRegenerating = false
+        errorMessage = nil
+        pipeline?.discardCurrentRun()
+
+        if pipeline != nil {
+            phase = .ready
+        } else if modelURL != nil {
+            phase = .loadingModel
+        } else {
+            phase = .missingModel
         }
     }
 
@@ -436,6 +562,144 @@ private extension REPACKViewModel {
             completedElapsed = processStartedAt.duration(to: clock.now)
             self.processStartedAt = nil
         }
+    }
+
+    private func beginProcessing(
+        runID: UUID,
+        pipeline: REPACK,
+        image: URL,
+        prompt: REPACKPrompt,
+        count: Int,
+        threshold requestedThreshold: Double
+    ) {
+        guard currentRunID == runID, processTask == nil else { return }
+
+        processTask = Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let generatedResult = try await pipeline.process(
+                    image: image,
+                    samplePrompt: prompt,
+                    sampleCount: count,
+                    threshold: requestedThreshold
+                ) { [weak self] update in
+                    self?.progress = update
+                    self?.captionExecutionCoordinator.report(update)
+                    self?.announceProgress(update)
+                }
+                try Task.checkCancellation()
+                guard currentRunID == runID else { return }
+
+                currentRunID = nil
+                processTask = nil
+                executionMode = nil
+                result = generatedResult
+                threshold = generatedResult.threshold
+                finishTiming()
+                clearPendingCaptionRun()
+                captionExecutionCoordinator.complete(success: true)
+                phase = .output
+                announce(String(localized: "Caption complete."))
+            } catch is CancellationError {
+                guard currentRunID == runID else { return }
+
+                currentRunID = nil
+                processTask = nil
+                executionMode = nil
+                finishTiming()
+                captionExecutionCoordinator.complete(success: false)
+                phase = .interrupted(
+                    String(
+                        localized:
+                            "Captioning was interrupted. Restart Captioning to begin again from the start."
+                    )
+                )
+            } catch {
+                guard currentRunID == runID else { return }
+
+                currentRunID = nil
+                processTask = nil
+                executionMode = nil
+                finishTiming()
+                captionExecutionCoordinator.complete(success: false)
+                fail(error)
+            }
+        }
+    }
+
+    private func expireProcessing() {
+        processTask?.cancel()
+        Task { [weak self] in
+            await self?.interruptProcessing(
+                message: String(
+                    localized:
+                        "Captioning was stopped by the system. Restart Captioning to begin again from the start."
+                )
+            )
+        }
+    }
+
+    private func interruptProcessing(message: String) async {
+        let wasProcessing = currentRunID != nil || phase == .processing
+        currentRunID = nil
+        let activeProcessTask = processTask
+        processTask = nil
+        activeProcessTask?.cancel()
+        await pipeline?.cancel()
+
+        guard wasProcessing else { return }
+
+        captionExecutionCoordinator.complete(success: false)
+        executionMode = nil
+        finishTiming()
+        phase = .interrupted(message)
+        announce(String(localized: "REPACK was interrupted."))
+    }
+
+    private func savePendingRun(
+        image: URL,
+        model: URL,
+        count: Int,
+        threshold: Double
+    ) {
+        pendingRunStore.save(
+            PendingCaptionRun(
+                imageFilename: image.lastPathComponent,
+                modelFilename: model.lastPathComponent,
+                promptChoice: promptChoice.rawValue,
+                customPrompt: customPrompt,
+                sampleCount: count,
+                threshold: threshold
+            )
+        )
+        hasPendingCaptionRun = true
+    }
+
+    private func restorePendingRun() async -> PendingCaptionRun? {
+        guard let pendingRun = pendingRunStore.load(),
+              let restoredPromptChoice = PromptChoice(rawValue: pendingRun.promptChoice),
+              let imageURL = try? await imageStore.restoreImage(
+                named: pendingRun.imageFilename
+              ) else {
+            pendingRunStore.clear()
+            hasPendingCaptionRun = false
+            return nil
+        }
+
+        selectedImageURL = imageURL
+        ownedImageURLs.insert(imageURL)
+        promptChoice = restoredPromptChoice
+        customPrompt = pendingRun.customPrompt
+        sampleCount = pendingRun.sampleCount
+        threshold = pendingRun.threshold
+        hasPendingCaptionRun = true
+        return pendingRun
+    }
+
+    private func clearPendingCaptionRun() {
+        pendingRunStore.clear()
+        hasPendingCaptionRun = false
     }
 
     private func fail(_ error: any Error) {

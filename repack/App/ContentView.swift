@@ -8,6 +8,7 @@ struct ContentView: View {
         case run
     }
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var model = REPACKViewModel()
     @State private var path: [Route] = []
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -27,16 +28,28 @@ struct ContentView: View {
                 path.append(.run)
             }
             .navigationDestination(for: Route.self) { _ in
-                REPACKRunView(model: model) {
-                    Task {
-                        await model.resetRun()
-                        path.removeAll()
+                REPACKRunView(
+                    model: model,
+                    restartAction: {
+                        model.startProcessing()
+                    },
+                    resetAction: {
+                        Task {
+                            await model.resetRun()
+                            path.removeAll()
+                        }
                     }
-                }
+                )
             }
         }
         .task {
             await model.prepareForLaunch()
+            await model.handleScenePhase(scenePhase)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            Task {
+                await model.handleScenePhase(newPhase)
+            }
         }
         .onChange(of: selectedPhotoItem) { _, item in
             guard let item else { return }

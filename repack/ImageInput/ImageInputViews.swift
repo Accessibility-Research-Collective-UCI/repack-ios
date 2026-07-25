@@ -13,8 +13,8 @@ struct LocalImagePreview: View {
             if let image {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity)
             } else {
                 Image(systemName: "photo")
                     .foregroundStyle(.secondary)

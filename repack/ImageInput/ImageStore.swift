@@ -159,6 +159,18 @@ actor ImageStore {
         }
     }
 
+    func restoreImage(named filename: String) throws -> URL? {
+        guard !filename.isEmpty,
+              filename == URL(fileURLWithPath: filename).lastPathComponent else {
+            return nil
+        }
+
+        let url = try imagesDirectory().appending(path: filename)
+        try validateManagedURL(url)
+        guard fileManager.fileExists(atPath: url.path) else { return nil }
+        return url
+    }
+
     private func downsampledImage(from source: CGImageSource) throws -> CGImage {
         guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
             as? [CFString: Any],

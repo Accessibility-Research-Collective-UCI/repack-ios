@@ -7,6 +7,7 @@ struct REPACKRunView: View {
     }
 
     @Bindable var model: REPACKViewModel
+    let restartAction: () -> Void
     let resetAction: () -> Void
     @AccessibilityFocusState private var accessibilityFocus: AccessibilityElement?
     @State private var isResetConfirmationPresented = false
@@ -28,6 +29,8 @@ struct REPACKRunView: View {
                     processingView
                 case .output:
                     outputView
+                case .interrupted(let message):
+                    interruptedView(message: message)
                 case .failed(let message):
                     ContentUnavailableView(
                         "REPACK Stopped",
@@ -35,9 +38,18 @@ struct REPACKRunView: View {
                         description: Text(message)
                     )
                     .accessibilityFocused($accessibilityFocus, equals: .failure)
-                    Button("Start Over", action: resetAction)
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity)
+                    if model.canCaption {
+                        Button("Restart Captioning", action: restartAction)
+                            .buttonStyle(.borderedProminent)
+                            .frame(maxWidth: .infinity)
+                        Button("Start Over", action: resetAction)
+                            .buttonStyle(.bordered)
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Button("Start Over", action: resetAction)
+                            .buttonStyle(.borderedProminent)
+                            .frame(maxWidth: .infinity)
+                    }
                 default:
                     ProgressView()
                         .frame(maxWidth: .infinity)
@@ -46,7 +58,7 @@ struct REPACKRunView: View {
             .frame(maxWidth: 760, alignment: .leading)
             .padding()
         }
-        .navigationTitle(model.phase == .output ? "Results" : "Processing")
+        .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(model.phase == .processing)
         .onChange(of: model.phase) { _, phase in
@@ -56,10 +68,7 @@ struct REPACKRunView: View {
             if model.phase == .processing {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        Task {
-                            await model.cancel()
-                            resetAction()
-                        }
+                        resetAction()
                     }
                 }
             } else if model.phase == .output {
@@ -77,6 +86,50 @@ struct REPACKRunView: View {
         } message: {
             Text("This will remove the current image and REPACK-processed caption.")
         }
+    }
+
+    private var navigationTitle: LocalizedStringKey {
+        switch model.phase {
+        case .output:
+            "Results"
+        case .interrupted:
+            "Interrupted"
+        case .failed:
+            "Stopped"
+        default:
+            "Processing"
+        }
+    }
+
+    private func interruptedView(message: String) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            ContentUnavailableView(
+                "Captioning Interrupted",
+                systemImage: "arrow.counterclockwise.circle.fill",
+                description: Text(message)
+            )
+            .accessibilityFocused($accessibilityFocus, equals: .failure)
+
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    interruptedRunButtons
+                }
+                VStack {
+                    interruptedRunButtons
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var interruptedRunButtons: some View {
+        Button("Restart Captioning", action: restartAction)
+            .buttonStyle(.borderedProminent)
+            .frame(maxWidth: .infinity)
+
+        Button("Start Over", action: resetAction)
+            .buttonStyle(.bordered)
+            .frame(maxWidth: .infinity)
     }
 
     private var processingView: some View {
@@ -293,7 +346,7 @@ struct REPACKRunView: View {
         switch phase {
         case .output:
             accessibilityFocus = .result
-        case .failed:
+        case .interrupted, .failed:
             accessibilityFocus = .failure
         default:
             accessibilityFocus = nil
