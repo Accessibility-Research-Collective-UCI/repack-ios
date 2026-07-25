@@ -7,7 +7,8 @@ import SwiftUI
             selectedPhotoItem: .constant(nil),
             showCamera: .constant(false),
             showModelManager: .constant(false),
-            captionAction: {}
+            captionAction: {},
+            resultsAction: {}
         )
     }
 }
@@ -19,7 +20,8 @@ import SwiftUI
             selectedPhotoItem: .constant(nil),
             showCamera: .constant(false),
             showModelManager: .constant(false),
-            captionAction: {}
+            captionAction: {},
+            resultsAction: {}
         )
     }
     .preferredColorScheme(.dark)
@@ -33,9 +35,38 @@ import SwiftUI
             selectedPhotoItem: .constant(nil),
             showCamera: .constant(false),
             showModelManager: .constant(false),
-            captionAction: {}
+            captionAction: {},
+            resultsAction: {}
         )
     }
+}
+
+#Preview("Home · Completed") {
+    NavigationStack {
+        REPACKHomeView(
+            model: .previewOutput,
+            selectedPhotoItem: .constant(nil),
+            showCamera: .constant(false),
+            showModelManager: .constant(false),
+            captionAction: {},
+            resultsAction: {}
+        )
+    }
+}
+
+#Preview("Home · Completed · Dark · Accessibility") {
+    NavigationStack {
+        REPACKHomeView(
+            model: .previewOutput,
+            selectedPhotoItem: .constant(nil),
+            showCamera: .constant(false),
+            showModelManager: .constant(false),
+            captionAction: {},
+            resultsAction: {}
+        )
+    }
+    .preferredColorScheme(.dark)
+    .environment(\.dynamicTypeSize, .accessibility3)
 }
 
 #Preview("Generating Captions") {

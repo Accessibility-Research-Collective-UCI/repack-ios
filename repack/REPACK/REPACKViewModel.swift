@@ -39,9 +39,24 @@ final class REPACKViewModel {
     var localModels: [LocalModel] = []
     var modelURL: URL?
     var selectedImageURL: URL?
-    var promptChoice: PromptChoice = .describe
-    var customPrompt = ""
-    var sampleCount = 5
+    var promptChoice: PromptChoice = .describe {
+        didSet {
+            guard promptChoice != oldValue else { return }
+            invalidateCompletedResult()
+        }
+    }
+    var customPrompt = "" {
+        didSet {
+            guard customPrompt != oldValue else { return }
+            invalidateCompletedResult()
+        }
+    }
+    var sampleCount = 5 {
+        didSet {
+            guard sampleCount != oldValue else { return }
+            invalidateCompletedResult()
+        }
+    }
     var threshold = 0.5
     var progress: REPACKProgress?
     var result: REPACKResult?
@@ -132,6 +147,9 @@ final class REPACKViewModel {
     }
 
     var isEngineReady: Bool {
+        if hasCompletedResult {
+            return true
+        }
         guard pipeline != nil else { return false }
         return switch phase {
         case .ready, .interrupted, .failed:
@@ -139,6 +157,10 @@ final class REPACKViewModel {
         case .missingModel, .loadingModel, .downloading, .processing, .output:
             false
         }
+    }
+
+    var hasCompletedResult: Bool {
+        phase == .output && result != nil
     }
 
     var canCaption: Bool {
@@ -509,8 +531,11 @@ private extension REPACKViewModel {
     }
 
     private func replaceAttachedImage(with imageURL: URL) async throws {
-        clearPendingCaptionRun()
         let previousImageURL = selectedImageURL
+        guard previousImageURL != imageURL else { return }
+
+        clearPendingCaptionRun()
+        invalidateCompletedResult()
         selectedImageURL = imageURL
         ownedImageURLs.insert(imageURL)
 
@@ -529,6 +554,29 @@ private extension REPACKViewModel {
         if let previousImageURL {
             ownedImageURLs.remove(previousImageURL)
             await imageStore.remove([previousImageURL])
+        }
+    }
+
+    private func invalidateCompletedResult() {
+        guard hasCompletedResult else { return }
+
+        thresholdRequestID = UUID()
+        thresholdTask?.cancel()
+        thresholdTask = nil
+        result = nil
+        progress = nil
+        processStartedAt = nil
+        completedElapsed = nil
+        isRegenerating = false
+        errorMessage = nil
+        pipeline?.discardCurrentRun()
+
+        if pipeline != nil {
+            phase = .ready
+        } else if modelURL != nil {
+            phase = .loadingModel
+        } else {
+            phase = .missingModel
         }
     }
 

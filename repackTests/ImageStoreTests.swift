@@ -106,15 +106,21 @@ struct ImageStoreTests {
         await model.attachImage(data: firstData)
         let firstURL = try #require(model.selectedImageURL)
 
+        model.phase = .output
+        model.result = completedResult
+
         await model.attachImage(data: Data("not an image".utf8))
         #expect(model.selectedImageURL == firstURL)
         #expect(FileManager.default.fileExists(atPath: firstURL.path))
+        #expect(model.hasCompletedResult)
 
         await model.attachImage(data: secondData)
         let secondURL = try #require(model.selectedImageURL)
         #expect(secondURL != firstURL)
         #expect(!FileManager.default.fileExists(atPath: firstURL.path))
         #expect(FileManager.default.fileExists(atPath: secondURL.path))
+        #expect(model.result == nil)
+        #expect(!model.hasCompletedResult)
 
         await model.resetRun()
         #expect(model.selectedImageURL == nil)
@@ -200,6 +206,18 @@ struct ImageStoreTests {
         #expect(!model.hasPendingCaptionRun)
         #expect(pendingRunStore.run == nil)
         #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
+    }
+
+    private var completedResult: REPACKResult {
+        REPACKResult(
+            captions: [],
+            atomizedCaptions: [],
+            scoredAtomics: [],
+            retainedAtomics: [],
+            caption: "A test image.",
+            threshold: 0.5,
+            timings: []
+        )
     }
 
     private struct Fixture {

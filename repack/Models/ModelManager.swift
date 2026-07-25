@@ -31,9 +31,9 @@ enum DownloadableModel: String, CaseIterable, Identifiable {
     nonisolated var shortDescription: String {
         switch self {
         case .e2b:
-            String(localized: "Fastest; runs on your device")
+            String(localized: "Runs on your device. Fastest captions.")
         case .e4b:
-            String(localized: "Better captions, but slower; runs on your device. Gemma 4 E2B is also needed.")
+            String(localized: "Runs on your device. Better captions, but slower. Gemma 4 E2B is also needed.")
         }
     }
 

@@ -439,6 +439,81 @@ struct REPACKTests {
         #expect(!executionCoordinator.reportedProgress.isEmpty)
     }
 
+    @Test("Completed runs remain configurable while unchanged results stay available")
+    func completedRunRemainsAvailable() async throws {
+        let (fixture, viewModel) = try await completedViewModel()
+        let initialResult = try #require(viewModel.result)
+
+        #expect(viewModel.phase == .output)
+        #expect(viewModel.hasCompletedResult)
+        #expect(viewModel.isEngineReady)
+        #expect(viewModel.canCaption)
+
+        viewModel.promptChoice = viewModel.promptChoice
+        viewModel.customPrompt = viewModel.customPrompt
+        viewModel.sampleCount = viewModel.sampleCount
+        await viewModel.selectModel(
+            LocalModel(url: fixture.modelURL, isBundled: false)
+        )
+
+        #expect(viewModel.phase == .output)
+        #expect(viewModel.result == initialResult)
+
+        viewModel.updateThreshold(0.8)
+        try await waitUntil { viewModel.result?.threshold == 0.8 }
+
+        #expect(viewModel.phase == .output)
+        #expect(viewModel.hasCompletedResult)
+
+        let regeneratedResult = try #require(viewModel.result)
+        await viewModel.attachImage(data: Data("not an image".utf8))
+
+        #expect(viewModel.phase == .output)
+        #expect(viewModel.result == regeneratedResult)
+        #expect(viewModel.hasCompletedResult)
+    }
+
+    @Test("Editing completed-run inputs invalidates stale results")
+    func completedRunInputChangesInvalidateResult() async throws {
+        let (_, promptViewModel) = try await completedViewModel()
+        promptViewModel.promptChoice = .product
+
+        #expect(promptViewModel.phase == .ready)
+        #expect(promptViewModel.result == nil)
+        #expect(!promptViewModel.hasCompletedResult)
+        #expect(promptViewModel.canCaption)
+
+        let (_, customPromptViewModel) = try await completedViewModel(
+            promptChoice: .custom,
+            customPrompt: "Describe the label."
+        )
+        customPromptViewModel.customPrompt = "Read the label text."
+
+        #expect(customPromptViewModel.phase == .ready)
+        #expect(customPromptViewModel.result == nil)
+        #expect(!customPromptViewModel.hasCompletedResult)
+        #expect(customPromptViewModel.canCaption)
+
+        let (_, sampleCountViewModel) = try await completedViewModel()
+        sampleCountViewModel.sampleCount += 1
+
+        #expect(sampleCountViewModel.phase == .ready)
+        #expect(sampleCountViewModel.result == nil)
+        #expect(!sampleCountViewModel.hasCompletedResult)
+        #expect(sampleCountViewModel.canCaption)
+
+        let (_, modelViewModel) = try await completedViewModel()
+        let replacementModel = LocalModel(
+            url: URL(fileURLWithPath: "/tmp/replacement-model.litertlm"),
+            isBundled: false
+        )
+        await modelViewModel.selectModel(replacementModel)
+
+        #expect(modelViewModel.phase == .ready)
+        #expect(modelViewModel.result == nil)
+        #expect(!modelViewModel.hasCompletedResult)
+    }
+
     @Test("Structured atomization tool publishes one isolated array")
     func structuredToolCapture() async throws {
         let sink = AtomicStatementsSink()
@@ -571,6 +646,27 @@ struct REPACKTests {
             }
             try await Task.sleep(for: .milliseconds(10))
         }
+    }
+
+    private func completedViewModel(
+        promptChoice: REPACKViewModel.PromptChoice = .describe,
+        customPrompt: String = "",
+        sampleCount: Int = 2
+    ) async throws -> (Fixture, REPACKViewModel) {
+        let fixture = Fixture()
+        let viewModel = REPACKViewModel(engineFactory: fixture.factory)
+
+        await viewModel.selectModel(
+            LocalModel(url: fixture.modelURL, isBundled: false)
+        )
+        viewModel.selectedImageURL = fixture.imageURL
+        viewModel.promptChoice = promptChoice
+        viewModel.customPrompt = customPrompt
+        viewModel.sampleCount = sampleCount
+        viewModel.startProcessing()
+        try await waitUntil { viewModel.phase == .output }
+
+        return (fixture, viewModel)
     }
 }
 

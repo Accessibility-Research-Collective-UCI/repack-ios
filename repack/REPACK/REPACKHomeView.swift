@@ -8,6 +8,7 @@ struct REPACKHomeView: View {
     @Binding var showCamera: Bool
     @Binding var showModelManager: Bool
     let captionAction: () -> Void
+    let resultsAction: () -> Void
 
     var body: some View {
         Form {
@@ -230,15 +231,25 @@ struct REPACKHomeView: View {
     }
 
     private var captionSection: some View {
-        Button(action: captionAction) {
-            Text(model.shouldOfferRestart ? "Restart Captioning" : "Caption Image")
+        Button(action: model.hasCompletedResult ? resultsAction : captionAction) {
+            Text(captionButtonTitle)
                 .frame(maxWidth: .infinity, alignment: .center)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
-        .disabled(!model.canCaption)
+        .disabled(!model.hasCompletedResult && !model.canCaption)
         .listRowInsets(.init(top: 8, leading: 0, bottom: 8, trailing: 0))
         .listRowBackground(Color.clear)
+    }
+
+    private var captionButtonTitle: LocalizedStringKey {
+        if model.hasCompletedResult {
+            "View Results"
+        } else if model.shouldOfferRestart {
+            "Restart Captioning"
+        } else {
+            "Caption Image"
+        }
     }
 
     private var selectedModelPath: Binding<String> {

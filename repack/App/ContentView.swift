@@ -22,11 +22,15 @@ struct ContentView: View {
                 model: model,
                 selectedPhotoItem: $selectedPhotoItem,
                 showCamera: $isCameraPresented,
-                showModelManager: $isModelManagerPresented
-            ) {
-                model.startProcessing()
-                path.append(.run)
-            }
+                showModelManager: $isModelManagerPresented,
+                captionAction: {
+                    model.startProcessing()
+                    path.append(.run)
+                },
+                resultsAction: {
+                    path.append(.run)
+                }
+            )
             .navigationDestination(for: Route.self) { _ in
                 REPACKRunView(
                     model: model,
