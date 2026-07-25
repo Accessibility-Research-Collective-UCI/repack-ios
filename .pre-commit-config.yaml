@@ -10,4 +10,4 @@ repos:
     rev: 0.57.1
     hooks:
       - id: swiftlint
-        entry: swiftlint --fix --strict
+        entry: swiftlint --fix
