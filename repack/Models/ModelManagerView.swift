@@ -33,7 +33,7 @@ struct ModelManagerView: View {
                                     Spacer()
                                     if ModelManager.sameFile(model.modelURL, localModel.url) {
                                         Image(systemName: "checkmark")
-                                            .accessibilityLabel("Selected")
+                                            .accessibilityHidden(true)
                                     }
                                 }
                             }
@@ -60,7 +60,7 @@ struct ModelManagerView: View {
                             HStack {
                                 VStack(alignment: .leading) {
                                     Text(downloadable.displayName)
-                                    Text("\(downloadable.approximateSize) · \(downloadable.detail)")
+                                    Text("\(downloadable.approximateSize) · \(downloadable.shortDescription)")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                     if !model.supportsDownload(downloadable) {
@@ -71,6 +71,7 @@ struct ModelManagerView: View {
                                 }
                                 Spacer()
                                 Image(systemName: "arrow.down.circle")
+                                    .accessibilityHidden(true)
                             }
                         }
                         .disabled(model.isBusy || !model.supportsDownload(downloadable))

@@ -2,13 +2,26 @@ import SwiftUI
 
 struct REPACKDetailsView: View {
     let result: REPACKResult
+    let visionModelName: String
+    let verificationModelName: String
+    let prompt: String
 
     @ScaledMetric(relativeTo: .caption) private var sampleColumnWidth = 64
 
     var body: some View {
         DisclosureGroup("Generation Details") {
             VStack(alignment: .leading, spacing: 20) {
-                detailSection("Timings", value: format(totalDuration)) {
+                detailSection("Models") {
+                    LabeledContent("Image Captioning", value: visionModelName)
+                    LabeledContent("Information Verification", value: verificationModelName)
+                }
+
+                detailSection("Prompt") {
+                    Text(prompt)
+                        .textSelection(.enabled)
+                }
+
+                detailSection("Time Elapsed", value: format(totalDuration)) {
                     ForEach(result.timings) { timing in
                         LabeledContent(stageName(timing.stage)) {
                             Text(format(timing.duration))
@@ -17,7 +30,7 @@ struct REPACKDetailsView: View {
                     }
                 }
 
-                detailSection("Reference Caption") {
+                detailSection("Original Caption") {
                     Text(result.captions.first?.text ?? "")
                         .textSelection(.enabled)
                 }
@@ -44,6 +57,7 @@ struct REPACKDetailsView: View {
                                     .multilineTextAlignment(.leading)
                                     .textSelection(.enabled)
                             }
+                            .accessibilityElement(children: .combine)
                         }
                     }
                 }
@@ -72,6 +86,7 @@ struct REPACKDetailsView: View {
                                             .foregroundStyle(.secondary)
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)
+                                        .accessibilityElement(children: .combine)
                                     }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -105,6 +120,7 @@ struct REPACKDetailsView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .accessibilityElement(children: .combine)
                             }
                         }
                     }
@@ -133,6 +149,7 @@ struct REPACKDetailsView: View {
                 }
             }
             .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -167,7 +184,7 @@ struct REPACKDetailsView: View {
             .units(
                 allowed: [.minutes, .seconds],
                 width: .abbreviated,
-                fractionalPart: .show(length: 1)
+                fractionalPart: .show(length: 2)
             )
         )
     }

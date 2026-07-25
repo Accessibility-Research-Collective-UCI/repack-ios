@@ -34,6 +34,9 @@
         }
       }
     },
+    "📦 REPACK" : {
+
+    },
     "1" : {
 
     },
@@ -41,12 +44,6 @@
 
     },
     "A compatible model is required." : {
-
-    },
-    "All inference stays on this device." : {
-
-    },
-    "Atomic statement generation complete." : {
 
     },
     "Atomic Statements and Scores" : {
@@ -58,10 +55,13 @@
     "Augmentation samples" : {
 
     },
+    "Better captions, but slower; runs on your device. Gemma 4 E2B is also needed." : {
+
+    },
     "BLEU average:" : {
 
     },
-    "Bundled with app" : {
+    "Breaking down captions" : {
 
     },
     "Camera" : {
@@ -77,6 +77,9 @@
 
     },
     "Caption Another Image" : {
+
+    },
+    "Caption breakdown complete." : {
 
     },
     "Caption complete" : {
@@ -131,10 +134,13 @@
     "Enter a prompt before captioning the image." : {
 
     },
-    "Finding atomic statements" : {
+    "Fastest; runs on your device" : {
 
     },
     "Gemma 4 E2B" : {
+
+    },
+    "Gemma 4 E2B is required to process captions sampled with E4B." : {
 
     },
     "Gemma 4 E4B" : {
@@ -152,19 +158,28 @@
     "Generation Details" : {
 
     },
-    "Higher quality, larger download" : {
-
-    },
     "Higher values retain only details supported more consistently across samples." : {
 
     },
     "Image" : {
 
     },
+    "Image Captioning" : {
+
+    },
     "Import Model" : {
 
     },
+    "Imported Model" : {
+
+    },
+    "Information Verification" : {
+
+    },
     "Loading model" : {
+
+    },
+    "Loading model on-device..." : {
 
     },
     "Manage Models" : {
@@ -182,7 +197,40 @@
     "Model unavailable" : {
 
     },
+    "Model: %@, running %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Model: %1$@, running %2$@"
+          }
+        }
+      }
+    },
+    "Model: %@, running %@\n%lld of %lld captions remaining" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Model: %1$@, running %2$@\n%3$lld of %4$lld captions remaining"
+          }
+        }
+      }
+    },
+    "Model: %@, running %@\n%lld of %lld statements remaining" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Model: %1$@, running %2$@\n%3$lld of %4$lld statements remaining"
+          }
+        }
+      }
+    },
     "Models" : {
+
+    },
+    "More samples can improve verification but take longer." : {
 
     },
     "No atomic statement" : {
@@ -194,10 +242,19 @@
     "Not retained" : {
 
     },
+    "Number of samples REPACK uses to verify information. More samples can improve verification, but will take longer." : {
+
+    },
     "OK" : {
 
     },
+    "on device" : {
+
+    },
     "On This Device" : {
+
+    },
+    "Original Caption" : {
 
     },
     "Photos" : {
@@ -218,16 +275,13 @@
     "Preparing vision model" : {
 
     },
-    "Preparing vision on CPU…" : {
-
-    },
     "Processing" : {
 
     },
     "Product" : {
 
     },
-    "Product and Describe are built-in presets. Custom sends exactly what you enter." : {
+    "Product and Describe are built-in prompts optimized for product identification and succinct, general image descriptions, respectively. Custom lets you provide your own prompt." : {
 
     },
     "Prompt" : {
@@ -236,16 +290,13 @@
     "Ready" : {
 
     },
-    "Reference Caption" : {
-
-    },
     "Remove Image" : {
 
     },
-    "REPACK" : {
+    "Removes the current caption and image." : {
 
     },
-    "REPACK also generates one reference caption. More samples can improve verification but take longer." : {
+    "REPACK" : {
 
     },
     "REPACK cancelled." : {
@@ -275,7 +326,16 @@
     "Reset" : {
 
     },
+    "Result: %@" : {
+
+    },
+    "Results" : {
+
+    },
     "Retained" : {
+
+    },
+    "Runs on your device" : {
 
     },
     "Sample" : {
@@ -296,9 +356,6 @@
     "Sampling" : {
 
     },
-    "Saved locally" : {
-
-    },
     "Scoring" : {
 
     },
@@ -306,9 +363,6 @@
 
     },
     "Select a photo or take a new one to begin." : {
-
-    },
-    "Selected" : {
 
     },
     "Selected image" : {
@@ -320,10 +374,10 @@
     "Similarity scoring complete." : {
 
     },
-    "Smaller download, lower memory use" : {
+    "Start Over" : {
 
     },
-    "Start Over" : {
+    "Start Over?" : {
 
     },
     "The atomic statements could not be prepared for repackaging." : {
@@ -350,13 +404,10 @@
     "The prepared image could not be saved." : {
 
     },
-    "The selected file is not a supported image." : {
-
-    },
-    "Gemma 4 E2B is required to process captions sampled with E4B." : {
-
-    },
     "The selected file is not a compatible LiteRT-LM model." : {
+
+    },
+    "The selected file is not a supported image." : {
 
     },
     "The selected photo could not be read." : {
@@ -374,13 +425,19 @@
     "The vision model is not ready." : {
 
     },
+    "This will remove the current caption and image." : {
+
+    },
+    "Time Elapsed" : {
+
+    },
     "Unavailable on this iPhone" : {
 
     },
-    "Timings" : {
+    "Updating caption…" : {
 
     },
-    "Updating caption…" : {
+    "Verification samples" : {
 
     },
     "Verification threshold" : {

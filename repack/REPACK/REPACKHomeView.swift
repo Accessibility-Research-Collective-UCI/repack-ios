@@ -18,7 +18,7 @@ struct REPACKHomeView: View {
             captionSection
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-        .navigationTitle("REPACK")
+        .navigationTitle("📦 REPACK")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -58,10 +58,16 @@ struct REPACKHomeView: View {
             if !model.selectableLocalModels.isEmpty {
                 Picker("Selected model", selection: selectedModelPath) {
                     ForEach(model.selectableLocalModels) { localModel in
-                        Text(localModel.displayName)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(localModel.displayName)
+                            Text(localModel.detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                             .tag(localModel.url.path)
                     }
                 }
+                .pickerStyle(.navigationLink)
                 .disabled(model.isBusy)
             }
         }
@@ -75,6 +81,7 @@ struct REPACKHomeView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 220)
                         .clipShape(.rect(cornerRadius: 16))
+                        .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Selected image")
 
                     Divider()
@@ -160,7 +167,7 @@ struct REPACKHomeView: View {
         } header: {
             Text("Prompt")
         } footer: {
-            Text("Product and Describe are built-in presets. Custom sends exactly what you enter.")
+            Text("Product and Describe are built-in prompts optimized for product identification and succinct, general image descriptions, respectively. Custom lets you provide your own prompt.")
         }
     }
 
@@ -194,24 +201,26 @@ struct REPACKHomeView: View {
                 Text("10")
             }
             .accessibilityValue("\(model.sampleCount)")
+            .accessibilityLabel("Verification samples")
+            .accessibilityHint("More samples can improve verification but take longer.")
             .disabled(!model.isEngineReady)
         } header: {
             Text("Samples: \(model.sampleCount)")
         } footer: {
-            Text("REPACK also generates one reference caption. More samples can improve verification but take longer.")
+            Text("Number of samples REPACK uses to verify information. More samples can improve verification, but will take longer.")
         }
     }
 
     private var captionSection: some View {
-        Section {
-            Button(action: captionAction) {
-                Label("Caption Image", systemImage: "sparkles")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(!model.canCaption)
+        Button(action: captionAction) {
+            Text("Caption Image")
+                .frame(maxWidth: .infinity, alignment: .center)
         }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .disabled(!model.canCaption)
+        .listRowInsets(.init(top: 8, leading: 0, bottom: 8, trailing: 0))
+        .listRowBackground(Color.clear)
     }
 
     private var selectedModelPath: Binding<String> {
@@ -232,7 +241,7 @@ struct REPACKHomeView: View {
         case .missingModel:
             String(localized: "A compatible model is required.")
         case .loadingModel:
-            String(localized: "Preparing vision on CPU…")
+            String(localized: "Loading model on-device...")
         case .downloading(let name, let progress):
             String(localized: "Downloading \(name): \(progress, format: .percent.precision(.fractionLength(0)))")
         case .ready:

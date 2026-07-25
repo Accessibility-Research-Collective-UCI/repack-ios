@@ -39,7 +39,7 @@ final class REPACKViewModel {
     var promptChoice: PromptChoice = .describe
     var customPrompt = ""
     var sampleCount = 5
-    var threshold = 0.75
+    var threshold = 0.5
     var progress: REPACKProgress?
     var result: REPACKResult?
     var isRegenerating = false
@@ -68,8 +68,30 @@ final class REPACKViewModel {
         self.devicePolicy = devicePolicy
     }
     var selectedModelName: String {
-        modelURL?.deletingPathExtension().lastPathComponent
-            ?? String(localized: "No model selected")
+        guard let modelURL else {
+            return String(localized: "No model selected")
+        }
+        return DownloadableModel.displayName(for: modelURL)
+    }
+
+    var verificationModelName: String {
+        guard let modelURL,
+              let processingModelURL = ModelManager.processingModelURL(
+                for: modelURL,
+                availableModels: localModels
+              ) else {
+            return selectedModelName
+        }
+        return DownloadableModel.displayName(for: processingModelURL)
+    }
+
+    var promptDisplayText: String {
+        switch promptChoice {
+        case .product, .describe:
+            promptChoice.title
+        case .custom:
+            samplePrompt.resolvedText
+        }
     }
 
     var selectableLocalModels: [LocalModel] {
@@ -337,7 +359,7 @@ extension REPACKViewModel {
         await cancel()
         result = nil
         progress = nil
-        threshold = 0.75
+        threshold = 0.5
         completedElapsed = nil
         errorMessage = nil
         pipeline?.discardCurrentRun()
@@ -433,7 +455,7 @@ private extension REPACKViewModel {
         case .preparingTextModel:
             message = String(localized: "Preparing the text model.")
         case .atomizing(let completed, let total) where completed == total:
-            message = String(localized: "Atomic statement generation complete.")
+            message = String(localized: "Caption breakdown complete.")
         case .scoring(let completed, let total) where completed == total:
             message = String(localized: "Similarity scoring complete.")
         case .repackaging:

@@ -5,9 +5,11 @@ struct LocalModel: Identifiable, Equatable {
     let isBundled: Bool
 
     nonisolated var id: String { url.path }
-    nonisolated var displayName: String { url.deletingPathExtension().lastPathComponent }
+    nonisolated var displayName: String {
+        DownloadableModel.displayName(for: url)
+    }
     nonisolated var detail: String {
-        isBundled ? String(localized: "Bundled with app") : String(localized: "Saved locally")
+        DownloadableModel.shortDescription(for: url)
     }
 }
 
@@ -26,13 +28,17 @@ enum DownloadableModel: String, CaseIterable, Identifiable {
         }
     }
 
-    nonisolated var detail: String {
+    nonisolated var shortDescription: String {
         switch self {
         case .e2b:
-            String(localized: "Smaller download, lower memory use")
+            String(localized: "Fastest; runs on your device")
         case .e4b:
-            String(localized: "Higher quality, larger download")
+            String(localized: "Better captions, but slower; runs on your device. Gemma 4 E2B is also needed.")
         }
+    }
+
+    nonisolated var executionLocation: ModelExecutionLocation {
+        .onDevice
     }
 
     nonisolated var approximateSize: String {
@@ -64,6 +70,43 @@ enum DownloadableModel: String, CaseIterable, Identifiable {
 
     nonisolated var downloadURL: URL {
         URL(string: "https://huggingface.co/\(repository)/resolve/main/\(fileName)")!
+    }
+
+    nonisolated init?(modelURL: URL) {
+        let identifier = modelURL.deletingPathExtension().lastPathComponent.lowercased()
+
+        if identifier.contains("e2b") {
+            self = .e2b
+        } else if identifier.contains("e4b") {
+            self = .e4b
+        } else {
+            return nil
+        }
+    }
+
+    nonisolated static func displayName(for modelURL: URL) -> String {
+        DownloadableModel(modelURL: modelURL)?.displayName
+            ?? String(localized: "Imported Model")
+    }
+
+    nonisolated static func shortDescription(for modelURL: URL) -> String {
+        DownloadableModel(modelURL: modelURL)?.shortDescription
+            ?? String(localized: "Runs on your device")
+    }
+
+    nonisolated static func executionLocation(for modelURL: URL) -> ModelExecutionLocation {
+        DownloadableModel(modelURL: modelURL)?.executionLocation ?? .onDevice
+    }
+}
+
+nonisolated enum ModelExecutionLocation: Sendable {
+    case onDevice
+
+    var progressDescription: String {
+        switch self {
+        case .onDevice:
+            String(localized: "on device")
+        }
     }
 }
 
@@ -234,13 +277,11 @@ struct ModelManager {
     }
 
     nonisolated static func isE2B(_ modelURL: URL) -> Bool {
-        modelURL.deletingPathExtension().lastPathComponent
-            .localizedCaseInsensitiveContains("E2B")
+        DownloadableModel(modelURL: modelURL) == .e2b
     }
 
     nonisolated static func isE4B(_ modelURL: URL) -> Bool {
-        modelURL.deletingPathExtension().lastPathComponent
-            .localizedCaseInsensitiveContains("E4B")
+        DownloadableModel(modelURL: modelURL) == .e4b
     }
 
     nonisolated static func applicationSupportDirectory() throws -> URL {

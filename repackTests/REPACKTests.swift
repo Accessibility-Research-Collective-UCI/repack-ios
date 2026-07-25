@@ -13,6 +13,39 @@ struct REPACKTests {
         #expect(REPACKPrompt.custom("  Custom caption request. \n").resolvedText == "Custom caption request.")
     }
 
+    @Test("Model URLs resolve to user-facing names and descriptions")
+    func modelPresentation() throws {
+        let e2BURL = URL(fileURLWithPath: "/tmp/gemma-4-E2B-it.litertlm")
+        let e4BURL = URL(fileURLWithPath: "/tmp/gemma-4-E4B-it.litertlm")
+        let e2B = try #require(DownloadableModel(modelURL: e2BURL))
+        let e4B = try #require(DownloadableModel(modelURL: e4BURL))
+
+        #expect(e2B.displayName == "Gemma 4 E2B")
+        #expect(e2B.shortDescription == "Fastest; runs on your device")
+        #expect(e4B.displayName == "Gemma 4 E4B")
+        #expect(e4B.shortDescription.contains("Gemma 4 E2B is also needed"))
+
+        let viewModel = REPACKViewModel()
+        viewModel.modelURL = e4BURL
+        viewModel.localModels = [
+            LocalModel(url: e4BURL, isBundled: false),
+            LocalModel(url: e2BURL, isBundled: false)
+        ]
+        #expect(viewModel.selectedModelName == "Gemma 4 E4B")
+        #expect(viewModel.verificationModelName == "Gemma 4 E2B")
+
+        viewModel.promptChoice = .custom
+        viewModel.customPrompt = "  Focus on readable text.  "
+        #expect(viewModel.promptDisplayText == "Focus on readable text.")
+    }
+
+    @Test("Verification defaults to fifty percent")
+    func defaultVerificationThreshold() {
+        let viewModel = REPACKViewModel()
+
+        #expect(viewModel.threshold == 0.5)
+    }
+
     @Test("Process generates N plus one captions and caches scoring for regeneration")
     func completePipelineAndRegeneration() async throws {
         let fixture = Fixture()

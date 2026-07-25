@@ -3,7 +3,7 @@ import SwiftUI
 #Preview("Home") {
     NavigationStack {
         REPACKHomeView(
-            model: REPACKViewModel(),
+            model: .previewHome,
             selectedPhotoItem: .constant(nil),
             showCamera: .constant(false),
             showModelManager: .constant(false),
@@ -15,7 +15,7 @@ import SwiftUI
 #Preview("Home · Dark · Accessibility") {
     NavigationStack {
         REPACKHomeView(
-            model: REPACKViewModel(),
+            model: .previewHome,
             selectedPhotoItem: .constant(nil),
             showCamera: .constant(false),
             showModelManager: .constant(false),
@@ -26,17 +26,63 @@ import SwiftUI
     .environment(\.dynamicTypeSize, .accessibility3)
 }
 
+#Preview("Generating Captions") {
+    NavigationStack {
+        REPACKRunView(
+            model: .previewProcessing(.sampling(completed: 2, total: 6)),
+            resetAction: {}
+        )
+    }
+}
+
+#Preview("Breaking Down Captions") {
+    NavigationStack {
+        REPACKRunView(
+            model: .previewProcessing(.atomizing(completed: 2, total: 6)),
+            resetAction: {}
+        )
+    }
+}
+
+#Preview("Processing · Accessibility") {
+    NavigationStack {
+        REPACKRunView(
+            model: .previewProcessing(.sampling(completed: 2, total: 6)),
+            resetAction: {}
+        )
+    }
+    .environment(\.dynamicTypeSize, .accessibility3)
+}
+
 #Preview("Output") {
     NavigationStack {
         REPACKRunView(model: .previewOutput, resetAction: {})
     }
 }
 
+#Preview("Output · Accessibility") {
+    NavigationStack {
+        REPACKRunView(model: .previewOutput, resetAction: {})
+    }
+    .environment(\.dynamicTypeSize, .accessibility3)
+}
+
 private extension REPACKViewModel {
+    static var previewHome: REPACKViewModel {
+        previewModel(phase: .ready)
+    }
+
+    static func previewProcessing(_ progress: REPACKProgress) -> REPACKViewModel {
+        let model = previewModel(phase: .processing)
+        model.progress = progress
+        model.selectedImageURL = previewImageURL
+        return model
+    }
+
     static var previewOutput: REPACKViewModel {
-        let model = REPACKViewModel()
-        model.phase = .output
-        model.threshold = 0.75
+        let model = previewModel(phase: .output)
+        model.selectedImageURL = previewImageURL
+        model.threshold = 0.5
         model.result = REPACKResult(
             captions: [
                 REPACKCaption(
@@ -67,7 +113,7 @@ private extension REPACKViewModel {
             ],
             retainedAtomics: ["A red can is visible."],
             caption: "A red can is visible.",
-            threshold: 0.75,
+            threshold: 0.5,
             timings: [
                 REPACKStageTiming(stage: .sampling, duration: .seconds(4.2)),
                 REPACKStageTiming(stage: .atomizing, duration: .seconds(2.1)),
@@ -75,6 +121,23 @@ private extension REPACKViewModel {
                 REPACKStageTiming(stage: .repackaging, duration: .seconds(0.8))
             ]
         )
+        return model
+    }
+
+    static var previewImageURL: URL {
+        URL(fileURLWithPath: "/tmp/repack-preview-image.png")
+    }
+
+    static func previewModel(phase: Phase) -> REPACKViewModel {
+        let model = REPACKViewModel()
+        let modelURL = URL(fileURLWithPath: "/tmp/gemma-4-E4B-it.litertlm")
+        let verificationModelURL = URL(fileURLWithPath: "/tmp/gemma-4-E2B-it.litertlm")
+        model.modelURL = modelURL
+        model.localModels = [
+            LocalModel(url: modelURL, isBundled: false),
+            LocalModel(url: verificationModelURL, isBundled: false)
+        ]
+        model.phase = phase
         return model
     }
 }
