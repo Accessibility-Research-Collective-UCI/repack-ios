@@ -55,9 +55,9 @@ struct REPACKHomeView: View {
             }
             .accessibilityElement(children: .combine)
 
-            if !model.localModels.isEmpty {
+            if !model.selectableLocalModels.isEmpty {
                 Picker("Selected model", selection: selectedModelPath) {
-                    ForEach(model.localModels) { localModel in
+                    ForEach(model.selectableLocalModels) { localModel in
                         Text(localModel.displayName)
                             .tag(localModel.url.path)
                     }

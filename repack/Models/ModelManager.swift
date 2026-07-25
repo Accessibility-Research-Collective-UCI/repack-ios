@@ -222,6 +222,27 @@ struct ModelManager {
         return lhs.standardizedFileURL.path == rhs.standardizedFileURL.path
     }
 
+    nonisolated static func processingModelURL(
+        for samplingModelURL: URL,
+        availableModels: [LocalModel]
+    ) -> URL? {
+        guard isE4B(samplingModelURL) else {
+            return samplingModelURL
+        }
+
+        return availableModels.first { isE2B($0.url) }?.url
+    }
+
+    nonisolated static func isE2B(_ modelURL: URL) -> Bool {
+        modelURL.deletingPathExtension().lastPathComponent
+            .localizedCaseInsensitiveContains("E2B")
+    }
+
+    nonisolated static func isE4B(_ modelURL: URL) -> Bool {
+        modelURL.deletingPathExtension().lastPathComponent
+            .localizedCaseInsensitiveContains("E4B")
+    }
+
     nonisolated static func applicationSupportDirectory() throws -> URL {
         let baseURL = try FileManager.default.url(
             for: .applicationSupportDirectory,

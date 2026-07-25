@@ -47,6 +47,7 @@ final class REPACKViewModel {
     private let modelManager: ModelManager
     private let imageStore: ImageStore
     private let engineFactory: any REPACKEngineFactory
+    private let devicePolicy: REPACKDevicePolicy
     private let clock = ContinuousClock()
     private var pipeline: REPACK?
     private var processTask: Task<Void, Never>?
@@ -58,15 +59,29 @@ final class REPACKViewModel {
     init(
         modelManager: ModelManager? = nil,
         imageStore: ImageStore = .shared,
-        engineFactory: (any REPACKEngineFactory)? = nil
+        engineFactory: (any REPACKEngineFactory)? = nil,
+        devicePolicy: REPACKDevicePolicy = .current
     ) {
         self.modelManager = modelManager ?? ModelManager()
         self.imageStore = imageStore
         self.engineFactory = engineFactory ?? LiteRTREPACKEngineFactory.shared
+        self.devicePolicy = devicePolicy
     }
     var selectedModelName: String {
         modelURL?.deletingPathExtension().lastPathComponent
             ?? String(localized: "No model selected")
+    }
+
+    var selectableLocalModels: [LocalModel] {
+        localModels.filter { supportsModel(at: $0.url) }
+    }
+
+    func supportsModel(at url: URL) -> Bool {
+        !ModelManager.isE4B(url) || devicePolicy.allowsE4B
+    }
+
+    func supportsDownload(_ model: DownloadableModel) -> Bool {
+        model != .e4b || devicePolicy.allowsE4B
     }
 
     var isBusy: Bool {
@@ -117,10 +132,17 @@ extension REPACKViewModel {
 
     func refreshLocalModels() async {
         let refreshed = modelManager.refreshLocalModels(currentModelURL: modelURL)
-        let selectionChanged = !ModelManager.sameFile(modelURL, refreshed.selectedModelURL)
-
         localModels = refreshed.models
-        modelURL = refreshed.selectedModelURL
+        let supportedSelection = refreshed.selectedModelURL.flatMap { selectedURL in
+            supportsModel(at: selectedURL) ? selectedURL : nil
+        }
+        let resolvedSelection = supportedSelection ?? selectableLocalModels.first?.url
+        let selectionChanged = !ModelManager.sameFile(modelURL, resolvedSelection)
+        modelURL = resolvedSelection
+
+        if let resolvedSelection, selectionChanged {
+            modelManager.rememberSelectedModel(resolvedSelection)
+        }
 
         if modelURL == nil {
             phase = .missingModel
@@ -131,6 +153,11 @@ extension REPACKViewModel {
     }
 
     func selectModel(_ model: LocalModel) async {
+        guard supportsModel(at: model.url) else {
+            errorMessage = REPACKError.e4BUnavailableOnDevice.localizedDescription
+            return
+        }
+
         if ModelManager.sameFile(modelURL, model.url) {
             if pipeline == nil {
                 await loadSelectedModel()
@@ -146,6 +173,11 @@ extension REPACKViewModel {
     }
 
     func downloadModel(_ model: DownloadableModel) async {
+        guard supportsDownload(model) else {
+            errorMessage = REPACKError.e4BUnavailableOnDevice.localizedDescription
+            return
+        }
+
         await discardPipelineAndRun()
         phase = .downloading(name: model.displayName, progress: 0)
 
@@ -169,6 +201,11 @@ extension REPACKViewModel {
     }
 
     func importModel(from selectedURL: URL) async {
+        guard supportsModel(at: selectedURL) else {
+            errorMessage = REPACKError.e4BUnavailableOnDevice.localizedDescription
+            return
+        }
+
         await discardPipelineAndRun()
         phase = .loadingModel
 
@@ -314,11 +351,27 @@ private extension REPACKViewModel {
             phase = .missingModel
             return
         }
+        guard supportsModel(at: modelURL) else {
+            fail(REPACKError.e4BUnavailableOnDevice)
+            return
+        }
 
         phase = .loadingModel
         errorMessage = nil
         do {
-            pipeline = try await REPACK(modelURL: modelURL, engineFactory: engineFactory)
+            guard let processingModelURL = ModelManager.processingModelURL(
+                for: modelURL,
+                availableModels: localModels
+            ) else {
+                throw REPACKError.missingE2BProcessingModel
+            }
+
+            pipeline = try await REPACK(
+                samplingModelURL: modelURL,
+                processingModelURL: processingModelURL,
+                engineFactory: engineFactory,
+                devicePolicy: devicePolicy
+            )
             phase = .ready
             announce(String(localized: "Model ready."))
         } catch is CancellationError {
@@ -342,6 +395,7 @@ private extension REPACKViewModel {
         processStartedAt = nil
         completedElapsed = nil
         isRegenerating = false
+        REPACKMemoryDiagnostics.log("Pipeline discarded")
     }
 
     private func replaceAttachedImage(with imageURL: URL) async throws {

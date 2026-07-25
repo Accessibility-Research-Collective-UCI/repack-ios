@@ -4,30 +4,116 @@ import Foundation
 final class REPACK {
     typealias ProgressHandler = @MainActor (REPACKProgress) -> Void
 
-    private let modelURL: URL
+    private let samplingModelURL: URL
+    private let processingModelURL: URL
     private let engineFactory: any REPACKEngineFactory
+    private let devicePolicy: REPACKDevicePolicy
+    private let memoryProvider: any REPACKMemoryProviding
     private let clock = ContinuousClock()
 
-    private var visionEngine: (any REPACKInferenceEngine)?
+    private var samplingEngine: (any REPACKInferenceEngine)?
+    private var processingEngine: (any REPACKInferenceEngine)?
+    private var usesSequentialEngineLoading = false
     private var cachedResult: REPACKResult?
     private var progressHandler: ProgressHandler?
 
     convenience init(modelURL: URL) async throws {
         try await self.init(
-            modelURL: modelURL,
+            samplingModelURL: modelURL,
+            processingModelURL: modelURL,
             engineFactory: LiteRTREPACKEngineFactory.shared
         )
     }
 
-    init(
+    convenience init(
+        samplingModelURL: URL,
+        processingModelURL: URL
+    ) async throws {
+        try await self.init(
+            samplingModelURL: samplingModelURL,
+            processingModelURL: processingModelURL,
+            engineFactory: LiteRTREPACKEngineFactory.shared
+        )
+    }
+
+    convenience init(
         modelURL: URL,
         engineFactory: any REPACKEngineFactory
     ) async throws {
-        self.modelURL = modelURL
-        self.engineFactory = engineFactory
+        try await self.init(
+            samplingModelURL: modelURL,
+            processingModelURL: modelURL,
+            engineFactory: engineFactory
+        )
+    }
 
-        try engineFactory.validateModel(at: modelURL)
-        visionEngine = try await engineFactory.makeVisionEngine(modelURL: modelURL)
+    init(
+        samplingModelURL: URL,
+        processingModelURL: URL,
+        engineFactory: any REPACKEngineFactory,
+        devicePolicy: REPACKDevicePolicy = .current,
+        memoryProvider: any REPACKMemoryProviding = SystemREPACKMemoryProvider()
+    ) async throws {
+        self.samplingModelURL = samplingModelURL
+        self.processingModelURL = processingModelURL
+        self.engineFactory = engineFactory
+        self.devicePolicy = devicePolicy
+        self.memoryProvider = memoryProvider
+
+        REPACKMemoryDiagnostics.log("Before REPACK engine initialization")
+        debugLog(
+            "Device \(devicePolicy.modelIdentifier) uses E4B policy "
+                + "\(String(describing: devicePolicy.e4BMode))."
+        )
+        if ModelManager.isE4B(samplingModelURL), !devicePolicy.allowsE4B {
+            throw REPACKError.e4BUnavailableOnDevice
+        }
+
+        try engineFactory.validateModel(at: samplingModelURL)
+        samplingEngine = try await engineFactory.makeVisionEngine(modelURL: samplingModelURL)
+        REPACKMemoryDiagnostics.log("Sampling engine ready")
+
+        if ModelManager.sameFile(samplingModelURL, processingModelURL) {
+            processingEngine = samplingEngine
+            debugLog("Sampling and processing share the E2B vision engine.")
+        } else {
+            try engineFactory.validateModel(at: processingModelURL)
+            let shouldKeepBothEnginesResident: Bool
+            switch devicePolicy.e4BMode {
+            case .unavailable:
+                throw REPACKError.e4BUnavailableOnDevice
+            case .resident:
+                shouldKeepBothEnginesResident = true
+            case .adaptive:
+                let availableMemory = memoryProvider.availableMemory()
+                shouldKeepBothEnginesResident =
+                    availableMemory >= REPACKDevicePolicy.minimumAvailableForResidentEngines
+                debugLog(
+                    "Adaptive engine policy found "
+                        + "\(availableMemory.formatted(.byteCount(style: .memory))) available."
+                )
+            }
+
+            if shouldKeepBothEnginesResident {
+                processingEngine = try await engineFactory.makeTextEngine(
+                    modelURL: processingModelURL
+                )
+                debugLog(
+                    "Sampling uses \(samplingModelURL.deletingPathExtension().lastPathComponent); "
+                        + "processing uses \(processingModelURL.deletingPathExtension().lastPathComponent)."
+                )
+            } else {
+                usesSequentialEngineLoading = true
+                debugLog(
+                    "E4B will be released after sampling before E2B processing is loaded."
+                )
+            }
+        }
+        REPACKMemoryDiagnostics.log("REPACK engine initialization complete")
+    }
+
+    deinit {
+        REPACKMemoryDiagnostics.log("REPACK deinitializing")
     }
 }
 
@@ -43,6 +129,7 @@ extension REPACK {
         cachedResult = nil
         progressHandler = progress
         defer { progressHandler = nil }
+        REPACKMemoryDiagnostics.log("Process started")
 
         var timings: [REPACKStageTiming] = []
 
@@ -54,6 +141,7 @@ extension REPACK {
         )
         timings.append(samplingTiming)
         debugLog("Sampling complete in \(samplingTiming.duration).")
+        REPACKMemoryDiagnostics.log("Sampling stage complete")
 
         let atomizingStart = clock.now
         let atomizedCaptions = try await atomize(captions: captions)
@@ -63,6 +151,7 @@ extension REPACK {
         )
         timings.append(atomizingTiming)
         debugLog("Atomization complete in \(atomizingTiming.duration).")
+        REPACKMemoryDiagnostics.log("Atomization stage complete")
 
         let scoredAtomics = try await score(
             atomizedCaptions: atomizedCaptions,
@@ -82,6 +171,7 @@ extension REPACK {
         )
         timings.append(repackagingTiming)
         debugLog("Repackaging complete in \(repackagingTiming.duration).")
+        REPACKMemoryDiagnostics.log("Repackaging stage complete")
 
         let result = REPACKResult(
             captions: captions,
@@ -93,6 +183,7 @@ extension REPACK {
             timings: timings
         )
         cachedResult = result
+        REPACKMemoryDiagnostics.log("Process complete")
         return result
     }
 
@@ -110,8 +201,8 @@ extension REPACK {
             throw REPACKError.emptyPrompt
         }
 
-        try await prepareVisionEngineIfNeeded()
-        guard let visionEngine else {
+        try await prepareSamplingEngineIfNeeded()
+        guard let samplingEngine else {
             throw REPACKError.missingVisionEngine
         }
 
@@ -122,10 +213,11 @@ extension REPACK {
         for index in 0..<total {
             try Task.checkCancellation()
             emit(.sampling(completed: index, total: total))
-            let text = try await visionEngine.generateCaption(
+            let seed = index + 1
+            let text = try await samplingEngine.generateCaption(
                 image: image,
                 prompt: promptText,
-                seed: index
+                seed: seed
             )
             let caption = REPACKCaption(
                 index: index,
@@ -135,8 +227,9 @@ extension REPACK {
             captions.append(caption)
             debugLog(
                 "Caption \(caption.index) [\(caption.kind == .reference ? "reference" : "sample"), "
-                    + "seed \(index)]:\n\(caption.text)"
+                    + "seed \(seed)]:\n\(caption.text)"
             )
+            REPACKMemoryDiagnostics.log("Generated caption \(caption.index) of \(total - 1)")
             emit(.sampling(completed: captions.count, total: total))
         }
 
@@ -144,10 +237,11 @@ extension REPACK {
     }
 
     func atomize(caption: String) async throws -> [String] {
-        guard let visionEngine else {
-            throw REPACKError.missingVisionEngine
+        try await prepareProcessingEngineIfNeeded()
+        guard let processingEngine else {
+            throw REPACKError.missingTextEngine
         }
-        return try await visionEngine.atomize(caption: caption)
+        return try await processingEngine.atomize(caption: caption)
     }
 
     func score(
@@ -231,11 +325,12 @@ extension REPACK {
             return abstention
         }
 
-        guard let visionEngine else {
-            throw REPACKError.missingVisionEngine
+        try await prepareProcessingEngineIfNeeded()
+        guard let processingEngine else {
+            throw REPACKError.missingTextEngine
         }
 
-        let caption = try nonempty(try await visionEngine.repackage(atomics: retained))
+        let caption = try nonempty(try await processingEngine.repackage(atomics: retained))
         debugLog("Repackaged caption:\n\(caption)")
         return caption
     }
@@ -251,6 +346,7 @@ extension REPACK {
             threshold: threshold
         )
         let start = clock.now
+        REPACKMemoryDiagnostics.log("Threshold regeneration started")
         let caption = try await repackage(
             referenceAtomsAndScores: cachedResult.scoredAtomics,
             threshold: threshold
@@ -267,11 +363,18 @@ extension REPACK {
             "Threshold regeneration complete at "
                 + "\(threshold.formatted(.number.precision(.fractionLength(2))))."
         )
+        REPACKMemoryDiagnostics.log("Threshold regeneration complete")
         return updatedResult
     }
 
     func cancel() async {
-        await visionEngine?.cancel()
+        await samplingEngine?.cancel()
+        if let processingEngine,
+           let samplingEngine,
+           processingEngine !== samplingEngine {
+            await processingEngine.cancel()
+        }
+        REPACKMemoryDiagnostics.log("Inference cancelled")
     }
 
     func discardCurrentRun() {
@@ -280,11 +383,40 @@ extension REPACK {
 }
 
 private extension REPACK {
-    private func prepareVisionEngineIfNeeded() async throws {
-        guard visionEngine == nil else { return }
+    private func prepareSamplingEngineIfNeeded() async throws {
+        guard samplingEngine == nil else { return }
+
+        if usesSequentialEngineLoading {
+            await processingEngine?.cancel()
+            processingEngine = nil
+            REPACKMemoryDiagnostics.log("E2B processing engine released before E4B sampling")
+        }
 
         emit(.preparingVisionModel)
-        visionEngine = try await engineFactory.makeVisionEngine(modelURL: modelURL)
+        samplingEngine = try await engineFactory.makeVisionEngine(modelURL: samplingModelURL)
+        if ModelManager.sameFile(samplingModelURL, processingModelURL) {
+            processingEngine = samplingEngine
+        }
+        REPACKMemoryDiagnostics.log("Sampling engine restored")
+    }
+
+    private func prepareProcessingEngineIfNeeded() async throws {
+        guard processingEngine == nil else { return }
+
+        if usesSequentialEngineLoading {
+            await samplingEngine?.cancel()
+            samplingEngine = nil
+            REPACKMemoryDiagnostics.log("E4B sampling engine released before E2B processing")
+        }
+
+        if ModelManager.sameFile(samplingModelURL, processingModelURL) {
+            try await prepareSamplingEngineIfNeeded()
+            processingEngine = samplingEngine
+        } else {
+            emit(.preparingTextModel)
+            processingEngine = try await engineFactory.makeTextEngine(modelURL: processingModelURL)
+        }
+        REPACKMemoryDiagnostics.log("Processing engine restored")
     }
 
     private func atomize(
@@ -304,6 +436,7 @@ private extension REPACK {
                 "Atomized caption \(caption.index) into \(statements.count) statements:\n"
                     + statements.debugList
             )
+            REPACKMemoryDiagnostics.log("Atomized caption \(caption.index)")
             emit(.atomizing(completed: atomizedCaptions.count, total: captions.count))
         }
 
@@ -325,6 +458,7 @@ private extension REPACK {
         )
         timings.append(timing)
         debugLog("Scoring complete in \(timing.duration).")
+        REPACKMemoryDiagnostics.log("Scoring stage complete")
         return scoredAtomics
     }
 

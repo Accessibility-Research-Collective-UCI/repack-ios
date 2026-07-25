@@ -24,6 +24,11 @@ struct ModelManagerView: View {
                                         Text(localModel.detail)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
+                                        if !model.supportsModel(at: localModel.url) {
+                                            Text("Unavailable on this iPhone")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
                                     }
                                     Spacer()
                                     if ModelManager.sameFile(model.modelURL, localModel.url) {
@@ -37,7 +42,7 @@ struct ModelManagerView: View {
                                     ? .isSelected
                                     : []
                             )
-                            .disabled(model.isBusy)
+                            .disabled(model.isBusy || !model.supportsModel(at: localModel.url))
                         }
                     }
                 }
@@ -58,12 +63,17 @@ struct ModelManagerView: View {
                                     Text("\(downloadable.approximateSize) · \(downloadable.detail)")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                    if !model.supportsDownload(downloadable) {
+                                        Text("Unavailable on this iPhone")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                                 Spacer()
                                 Image(systemName: "arrow.down.circle")
                             }
                         }
-                        .disabled(model.isBusy)
+                        .disabled(model.isBusy || !model.supportsDownload(downloadable))
                     }
 
                     if case .downloading(_, let progress) = model.phase {
@@ -84,7 +94,7 @@ struct ModelManagerView: View {
                     }
                     .disabled(model.isBusy)
                 } footer: {
-                    Text("Choose a compatible .litertlm bundle with speculative decoding support.")
+                    Text("Choose a compatible .litertlm model bundle.")
                 }
             }
             .navigationTitle("Models")

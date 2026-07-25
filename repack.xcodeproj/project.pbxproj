@@ -21,7 +21,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		22171F7B3013F12100756490 /* repack.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = repack.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		22171F7B3013F12100756490 /* REPACK Cap.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "REPACK Cap.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1E000000000000000000001 /* repackTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = repackTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -78,7 +78,7 @@
 		22171F7C3013F12100756490 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				22171F7B3013F12100756490 /* repack.app */,
+				22171F7B3013F12100756490 /* REPACK Cap.app */,
 				B1E000000000000000000001 /* repackTests.xctest */,
 			);
 			name = Products;
@@ -105,7 +105,7 @@
 				2217BE95301449ED00ECC1F0 /* LiteRTLM */,
 			);
 			productName = tester;
-			productReference = 22171F7B3013F12100756490 /* repack.app */;
+			productReference = 22171F7B3013F12100756490 /* REPACK Cap.app */;
 			productType = "com.apple.product-type.application";
 		};
 		B1E000000000000000000006 /* repackTests */ = {
@@ -137,7 +137,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2650;
-				LastUpgradeCheck = 2650;
+				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					22171F7A3013F12100756490 = {
 						CreatedOnToolsVersion = 26.5;
@@ -240,6 +240,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 23NCCP9F44;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -263,6 +264,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -302,6 +304,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 23NCCP9F44;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -318,6 +321,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -332,6 +336,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 23NCCP9F44;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -361,9 +366,10 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.5;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.uci.repack-tester";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = repack;
+				PRODUCT_NAME = "REPACK Cap";
 				REGISTER_APP_GROUPS = YES;
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
 				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
@@ -393,6 +399,7 @@
 				CODE_SIGN_ENTITLEMENTS = repack/repack.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 23NCCP9F44;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -416,9 +423,10 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.5;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.uci.repack-tester";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = repack;
+				PRODUCT_NAME = "REPACK Cap";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -453,7 +461,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/repack.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/repack";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/REPACK Cap.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/REPACK Cap";
 				TEST_TARGET_NAME = tester;
 			};
 			name = Debug;
@@ -477,7 +485,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/repack.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/repack";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/REPACK Cap.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/REPACK Cap";
 				TEST_TARGET_NAME = tester;
 			};
 			name = Release;

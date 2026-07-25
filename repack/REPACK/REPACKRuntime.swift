@@ -23,9 +23,8 @@ final class LiteRTREPACKEngineFactory: REPACKEngineFactory {
     private init() {}
 
     func validateModel(at modelURL: URL) throws {
-        guard let capabilities = Capabilities(modelPath: modelURL.path),
-              capabilities.hasSpeculativeDecodingSupport() else {
-            throw REPACKError.modelDoesNotSupportSpeculativeDecoding
+        guard Capabilities(modelPath: modelURL.path) != nil else {
+            throw REPACKError.invalidModel
         }
     }
 
@@ -33,6 +32,8 @@ final class LiteRTREPACKEngineFactory: REPACKEngineFactory {
         ExperimentalFlags.optIntoExperimentalAPIs()
         ExperimentalFlags.enableSpeculativeDecoding = false
         ExperimentalFlags.visualTokenBudget = 1_120
+        let modelName = modelURL.deletingPathExtension().lastPathComponent
+        REPACKMemoryDiagnostics.log("Before creating vision engine: \(modelName)")
 
         let configuration = try EngineConfig(
             modelPath: modelURL.path,
@@ -43,13 +44,15 @@ final class LiteRTREPACKEngineFactory: REPACKEngineFactory {
         )
         let engine = Engine(engineConfig: configuration)
         try await engine.initialize()
+        REPACKMemoryDiagnostics.log("After creating vision engine: \(modelName)")
         return LiteRTREPACKInferenceEngine(engine: engine)
     }
 
     func makeTextEngine(modelURL: URL) async throws -> any REPACKInferenceEngine {
         ExperimentalFlags.optIntoExperimentalAPIs()
-
-        ExperimentalFlags.enableSpeculativeDecoding = true
+        ExperimentalFlags.enableSpeculativeDecoding = false
+        let modelName = modelURL.deletingPathExtension().lastPathComponent
+        REPACKMemoryDiagnostics.log("Before creating text engine: \(modelName)")
 
         let configuration = try EngineConfig(
             modelPath: modelURL.path,
@@ -60,6 +63,7 @@ final class LiteRTREPACKEngineFactory: REPACKEngineFactory {
         )
         let engine = Engine(engineConfig: configuration)
         try await engine.initialize()
+        REPACKMemoryDiagnostics.log("After creating text engine: \(modelName)")
         return LiteRTREPACKInferenceEngine(engine: engine)
     }
 }
@@ -97,6 +101,21 @@ final class LiteRTREPACKInferenceEngine: REPACKInferenceEngine {
         let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedCaption.isEmpty else { return [] }
 
+        return try await AtomizationRetryPolicy.run { attempt in
+            try await self.atomize(trimmedCaption, isRetry: attempt > 0)
+        } onRetry: { attempt, error in
+            #if DEBUG
+            print(
+                "[REPACK] Retrying atomization after tool-call failure "
+                    + "(attempt \(attempt + 1)/\(AtomizationRetryPolicy.maximumAttempts)): "
+                    + error.localizedDescription
+            )
+            #endif
+            REPACKMemoryDiagnostics.log("Atomization tool-call retry")
+        }
+    }
+
+    private func atomize(_ caption: String, isRetry: Bool) async throws -> [String] {
         let sampler = try SamplerConfig(topK: 1, topP: 1, temperature: 0)
         let configuration = ConversationConfig(
             systemMessage: Message(REPACKPrompts.atomizePrompt, role: .system),
@@ -105,11 +124,20 @@ final class LiteRTREPACKInferenceEngine: REPACKInferenceEngine {
         )
         let conversation = try await engine.createConversation(with: configuration)
         let sink = AtomicStatementsSink()
+        let retryGuidance = isRetry
+            ? """
+
+            The previous tool call could not be parsed. Use the exact registered tool name \
+            `\(SubmitAtomicStatementsTool.name)`. Do not abbreviate the name and do not write a \
+            Python-style function call with parentheses. Follow the registered tool schema exactly.
+            """
+            : ""
         let input = """
             Caption to atomize:
             <caption>
-            \(trimmedCaption)
+            \(caption)
             </caption>
+            \(retryGuidance)
             """
 
         _ = try await AtomicStatementsContext.$sink.withValue(sink) {
@@ -171,6 +199,55 @@ final class LiteRTREPACKInferenceEngine: REPACKInferenceEngine {
             Task { @MainActor [weak self] in
                 await self?.cancel()
             }
+        }
+    }
+}
+
+nonisolated enum AtomizationRetryPolicy {
+    static let maximumAttempts = 2
+
+    @MainActor
+    static func run<T>(
+        operation: (_ attempt: Int) async throws -> T,
+        onRetry: (_ attempt: Int, _ error: any Error) -> Void = { _, _ in }
+    ) async throws -> T {
+        for attempt in 0..<maximumAttempts {
+            do {
+                return try await operation(attempt)
+            } catch {
+                try Task.checkCancellation()
+                guard attempt + 1 < maximumAttempts, shouldRetry(error) else {
+                    throw error
+                }
+                onRetry(attempt + 1, error)
+            }
+        }
+
+        preconditionFailure("Atomization retry loop must return or throw.")
+    }
+
+    static func shouldRetry(_ error: any Error) -> Bool {
+        if let structuredError = error as? StructuredAtomizationError {
+            return structuredError == .noToolCall || structuredError == .multipleToolCalls
+        }
+
+        guard let liteRTError = error as? LiteRTLMError,
+              case .conversation(let conversationError) = liteRTError else {
+            return false
+        }
+
+        switch conversationError {
+        case .invalidResponse(let details):
+            return details.localizedCaseInsensitiveContains("sendMessage returned null")
+                || details.localizedCaseInsensitiveContains("tool call")
+                || details.localizedCaseInsensitiveContains("parse")
+        case .invalidJson(let details):
+            return details.localizedCaseInsensitiveContains("tool call")
+                || details.localizedCaseInsensitiveContains("parse")
+        case .toolExecutionError:
+            return true
+        default:
+            return false
         }
     }
 }

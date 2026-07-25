@@ -97,7 +97,7 @@
     "Caption updated." : {
 
     },
-    "Choose a compatible .litertlm bundle with speculative decoding support." : {
+    "Choose a compatible .litertlm model bundle." : {
 
     },
     "Choose an Image" : {
@@ -138,6 +138,9 @@
 
     },
     "Gemma 4 E4B" : {
+
+    },
+    "Gemma 4 E4B is not available on this iPhone." : {
 
     },
     "Generate a caption before changing its threshold." : {
@@ -350,7 +353,10 @@
     "The selected file is not a supported image." : {
 
     },
-    "The selected model does not include speculative decoding support." : {
+    "Gemma 4 E2B is required to process captions sampled with E4B." : {
+
+    },
+    "The selected file is not a compatible LiteRT-LM model." : {
 
     },
     "The selected photo could not be read." : {
@@ -366,6 +372,9 @@
 
     },
     "The vision model is not ready." : {
+
+    },
+    "Unavailable on this iPhone" : {
 
     },
     "Timings" : {
