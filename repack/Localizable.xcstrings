@@ -1,0 +1,382 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld of %lld captions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld captions"
+          }
+        }
+      }
+    },
+    "%lld of %lld statements" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld statements"
+          }
+        }
+      }
+    },
+    "1" : {
+
+    },
+    "10" : {
+
+    },
+    "A compatible model is required." : {
+
+    },
+    "All inference stays on this device." : {
+
+    },
+    "Atomic statement generation complete." : {
+
+    },
+    "Atomic Statements and Scores" : {
+
+    },
+    "Atomizing" : {
+
+    },
+    "Augmentation samples" : {
+
+    },
+    "BLEU average:" : {
+
+    },
+    "Bundled with app" : {
+
+    },
+    "Camera" : {
+
+    },
+    "Camera is not available on this device." : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Caption" : {
+
+    },
+    "Caption Another Image" : {
+
+    },
+    "Caption complete" : {
+
+    },
+    "Caption complete." : {
+
+    },
+    "Caption Image" : {
+
+    },
+    "Caption prompt" : {
+
+    },
+    "Caption sampling complete." : {
+
+    },
+    "Caption updated." : {
+
+    },
+    "Choose a compatible .litertlm bundle with speculative decoding support." : {
+
+    },
+    "Choose an Image" : {
+
+    },
+    "Custom" : {
+
+    },
+    "Describe" : {
+
+    },
+    "Done" : {
+
+    },
+    "Download" : {
+
+    },
+    "Downloading %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Elapsed" : {
+
+    },
+    "Enter a prompt before captioning the image." : {
+
+    },
+    "Finding atomic statements" : {
+
+    },
+    "Gemma 4 E2B" : {
+
+    },
+    "Gemma 4 E4B" : {
+
+    },
+    "Generate a caption before changing its threshold." : {
+
+    },
+    "Generating captions" : {
+
+    },
+    "Generation Details" : {
+
+    },
+    "Higher quality, larger download" : {
+
+    },
+    "Higher values retain only details supported more consistently across samples." : {
+
+    },
+    "Image" : {
+
+    },
+    "Import Model" : {
+
+    },
+    "Loading model" : {
+
+    },
+    "Manage Models" : {
+
+    },
+    "Model" : {
+
+    },
+    "Model download" : {
+
+    },
+    "Model ready." : {
+
+    },
+    "Model unavailable" : {
+
+    },
+    "Models" : {
+
+    },
+    "No atomic statement" : {
+
+    },
+    "No model selected" : {
+
+    },
+    "Not retained" : {
+
+    },
+    "OK" : {
+
+    },
+    "On This Device" : {
+
+    },
+    "Photos" : {
+
+    },
+    "Preparing REPACK" : {
+
+    },
+    "Preparing text model" : {
+
+    },
+    "Preparing the text model." : {
+
+    },
+    "Preparing the vision model." : {
+
+    },
+    "Preparing vision model" : {
+
+    },
+    "Preparing vision on CPU…" : {
+
+    },
+    "Processing" : {
+
+    },
+    "Product" : {
+
+    },
+    "Product and Describe are built-in presets. Custom sends exactly what you enter." : {
+
+    },
+    "Prompt" : {
+
+    },
+    "Ready" : {
+
+    },
+    "Reference Caption" : {
+
+    },
+    "Remove Image" : {
+
+    },
+    "REPACK" : {
+
+    },
+    "REPACK also generates one reference caption. More samples can improve verification but take longer." : {
+
+    },
+    "REPACK cancelled." : {
+
+    },
+    "REPACK could not verify enough details to produce a caption at this threshold." : {
+
+    },
+    "REPACK failed. %@" : {
+
+    },
+    "REPACK started." : {
+
+    },
+    "REPACK Stopped" : {
+
+    },
+    "Repackaging" : {
+
+    },
+    "Repackaging caption" : {
+
+    },
+    "Repackaging the verified statements." : {
+
+    },
+    "Reset" : {
+
+    },
+    "Retained" : {
+
+    },
+    "Sample" : {
+
+    },
+    "Sample %lld" : {
+
+    },
+    "Sample Captions" : {
+
+    },
+    "Sample count must be between 1 and 10. Received %lld." : {
+
+    },
+    "Samples: %lld" : {
+
+    },
+    "Sampling" : {
+
+    },
+    "Saved locally" : {
+
+    },
+    "Scoring" : {
+
+    },
+    "Scoring similarities" : {
+
+    },
+    "Select a photo or take a new one to begin." : {
+
+    },
+    "Selected" : {
+
+    },
+    "Selected image" : {
+
+    },
+    "Selected model" : {
+
+    },
+    "Similarity scoring complete." : {
+
+    },
+    "Smaller download, lower memory use" : {
+
+    },
+    "Start Over" : {
+
+    },
+    "The atomic statements could not be prepared for repackaging." : {
+
+    },
+    "The image could not be prepared." : {
+
+    },
+    "The image is outside the app's managed image directory." : {
+
+    },
+    "The model did not submit structured atomic statements." : {
+
+    },
+    "The model download was cancelled." : {
+
+    },
+    "The model returned an empty response." : {
+
+    },
+    "The model submitted atomic statements more than once." : {
+
+    },
+    "The prepared image could not be saved." : {
+
+    },
+    "The selected file is not a supported image." : {
+
+    },
+    "The selected model does not include speculative decoding support." : {
+
+    },
+    "The selected photo could not be read." : {
+
+    },
+    "The structured atomization result could not be captured." : {
+
+    },
+    "The text model is not ready." : {
+
+    },
+    "The threshold must be between 0 and 1." : {
+
+    },
+    "The vision model is not ready." : {
+
+    },
+    "Timings" : {
+
+    },
+    "Updating caption…" : {
+
+    },
+    "Verification threshold" : {
+
+    }
+  },
+  "version" : "1.0"
+}

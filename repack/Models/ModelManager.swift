@@ -6,7 +6,9 @@ struct LocalModel: Identifiable, Equatable {
 
     nonisolated var id: String { url.path }
     nonisolated var displayName: String { url.deletingPathExtension().lastPathComponent }
-    nonisolated var detail: String { isBundled ? "Bundled with app" : "Saved locally" }
+    nonisolated var detail: String {
+        isBundled ? String(localized: "Bundled with app") : String(localized: "Saved locally")
+    }
 }
 
 enum DownloadableModel: String, CaseIterable, Identifiable {
@@ -18,18 +20,18 @@ enum DownloadableModel: String, CaseIterable, Identifiable {
     nonisolated var displayName: String {
         switch self {
         case .e2b:
-            "Gemma 4 E2B"
+            String(localized: "Gemma 4 E2B")
         case .e4b:
-            "Gemma 4 E4B"
+            String(localized: "Gemma 4 E4B")
         }
     }
 
     nonisolated var detail: String {
         switch self {
         case .e2b:
-            "Smaller download, lower memory use"
+            String(localized: "Smaller download, lower memory use")
         case .e4b:
-            "Higher quality, larger download"
+            String(localized: "Higher quality, larger download")
         }
     }
 

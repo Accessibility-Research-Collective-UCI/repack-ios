@@ -96,7 +96,7 @@ struct ImageStoreTests {
     func modelImageLifecycle() async throws {
         let fixture = try Fixture()
         defer { fixture.removeDirectory() }
-        let model = GemmaModel(imageStore: fixture.store)
+        let model = REPACKViewModel(imageStore: fixture.store)
         let firstData = try makeJPEG(width: 800, height: 600)
         let secondData = try makeJPEG(width: 600, height: 800)
 
@@ -113,7 +113,7 @@ struct ImageStoreTests {
         #expect(!FileManager.default.fileExists(atPath: firstURL.path))
         #expect(FileManager.default.fileExists(atPath: secondURL.path))
 
-        await model.resetConversation()
+        await model.resetRun()
         #expect(model.selectedImageURL == nil)
         #expect(!FileManager.default.fileExists(atPath: secondURL.path))
 

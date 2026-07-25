@@ -14,13 +14,13 @@ actor ImageStore {
         var errorDescription: String? {
             switch self {
             case .invalidImage:
-                "The selected file is not a supported image."
+                String(localized: "The selected file is not a supported image.")
             case .unableToCreateImage:
-                "The image could not be prepared."
+                String(localized: "The image could not be prepared.")
             case .unableToEncodeImage:
-                "The prepared image could not be saved."
+                String(localized: "The prepared image could not be saved.")
             case .unmanagedURL:
-                "The image is outside the app's managed image directory."
+                String(localized: "The image is outside the app's managed image directory.")
             }
         }
     }

@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct repackApp: App {
+struct REPACKApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
