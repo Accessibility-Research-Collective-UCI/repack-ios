@@ -326,6 +326,9 @@
     "Information Verification" : {
 
     },
+    "Interrupted" : {
+
+    },
     "Interrupted Caption" : {
 
     },
@@ -458,6 +461,9 @@
     "Preparing vision model" : {
 
     },
+    "Processing" : {
+
+    },
     "Product" : {
 
     },
@@ -529,6 +535,9 @@
 
     },
     "Result: %@" : {
+
+    },
+    "Results" : {
 
     },
     "Retained" : {
@@ -612,6 +621,9 @@
           }
         }
       }
+    },
+    "Stopped" : {
+
     },
     "Stops the download and removes temporary files." : {
 

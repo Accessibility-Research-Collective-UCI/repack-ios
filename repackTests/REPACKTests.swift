@@ -618,6 +618,53 @@ struct REPACKTests {
         #expect(statements["type"] as? String == "array")
     }
 
+    @Test("Response-format atomization requires a statements array")
+    func structuredAtomizationResponseFormat() throws {
+        let format = try AtomizationResponseFormat.make()
+        let data = Data(format.schemaOrPattern.utf8)
+        let schema = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let properties = try #require(schema["properties"] as? [String: Any])
+        let statements = try #require(properties["statements"] as? [String: Any])
+
+        #expect(format.type == .jsonObject)
+        #expect(Set(properties.keys) == ["statements"])
+        #expect(statements["type"] as? String == "array")
+        #expect((statements["items"] as? [String: Any])?["type"] as? String == "string")
+        #expect(schema["required"] as? [String] == ["statements"])
+        #expect(schema["additionalProperties"] as? Bool == false)
+    }
+
+    @Test("Response-format atomization trims, removes blanks, and deduplicates")
+    func structuredAtomizationResponseNormalization() throws {
+        let data = Data(
+            """
+            {"statements":[" A red can. ","","A red can.","A logo is visible."]}
+            """.utf8
+        )
+        let response = try JSONDecoder().decode(StructuredAtomizationResponse.self, from: data)
+
+        #expect(response.normalizedStatements == ["A red can.", "A logo is visible."])
+    }
+
+    @Test("Response-format atomization retries a decoding failure in a fresh attempt")
+    func structuredAtomizationResponseRetry() async throws {
+        var attempts: [Int] = []
+        let result: String = try await AtomizationRetryPolicy.run { attempt in
+            attempts.append(attempt)
+            if attempt == 0 {
+                throw DecodingError.dataCorrupted(
+                    .init(codingPath: [], debugDescription: "Invalid structured response.")
+                )
+            }
+            return "recovered"
+        }
+
+        #expect(result == "recovered")
+        #expect(attempts == [0, 1])
+    }
+
     @Test("Atomization retries a native tool-call parse failure in a fresh attempt")
     func atomizationToolCallRetry() async throws {
         var attempts: [Int] = []

@@ -234,6 +234,47 @@ nonisolated enum REPACKPrompts {
     * The person is holding the sneakers.
     """
 
+    static let structuredAtomizePrompt = """
+    Decompose the following image description into visually verifiable atomic facts. Return the complete list in the required structured response.
+
+    RULES:
+
+    1. Express one visual detail per statement.
+    2. Use only facts explicitly stated and visually verifiable.
+    3. Remove subjective language, inferred emotions or intentions, and speculation.
+    4. Use short, unambiguous, declarative sentences.
+
+    EXAMPLES:
+
+    Input: A red velvet couch with a cat lying on it.
+
+    Statements:
+
+    * There is a couch.
+    * The couch is red.
+    * The couch is velvet.
+    * There is a cat.
+    * The cat is lying on the couch.
+
+    Input: A horse and several cows feed on hay.
+
+    Statements:
+
+    * There is a horse.
+    * There are several cows.
+    * There is hay.
+    * The horse is feeding on hay.
+    * The cows are feeding on hay.
+
+    Input: A cheerful person proudly holding new sneakers, probably in a trendy park.
+
+    Statements:
+
+    * There is a person.
+    * There are sneakers.
+    * The person is holding the sneakers.
+    """
+
     static let repackagePrompt = """
     You will be given a list of atomic statements that describe an image. Combine them into a single caption. Do not include any additional information. Output only the final caption.
 

@@ -101,20 +101,52 @@ final class LiteRTREPACKInferenceEngine: REPACKInferenceEngine {
         let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedCaption.isEmpty else { return [] }
 
-        return try await AtomizationRetryPolicy.run { attempt in
-            try await self.atomize(trimmedCaption, isRetry: attempt > 0)
+        return try await AtomizationRetryPolicy.run { _ in
+            try await self.atomizeUsingResponseFormat(trimmedCaption)
         } onRetry: { attempt, error in
             #if DEBUG
             print(
-                "[REPACK] Retrying atomization after tool-call failure "
+                "[REPACK] Retrying response-format atomization "
                     + "(attempt \(attempt + 1)/\(AtomizationRetryPolicy.maximumAttempts)): "
-                    + error.localizedDescription
+                    + String(reflecting: error)
             )
             #endif
-            REPACKMemoryDiagnostics.log("Atomization tool-call retry")
+            REPACKMemoryDiagnostics.log("Response-format atomization retry")
         }
     }
 
+    private func atomizeUsingResponseFormat(_ caption: String) async throws -> [String] {
+        let sampler = try SamplerConfig(topK: 1, topP: 1, temperature: 0)
+        let configuration = ConversationConfig(
+            systemMessage: Message(REPACKPrompts.structuredAtomizePrompt, role: .system),
+            samplerConfig: sampler,
+            automaticToolCalling: false,
+            enableResponseFormat: true
+        )
+        let conversation = try await engine.createConversation(with: configuration)
+        let input = """
+            Caption to atomize:
+            <caption>
+            \(caption)
+            </caption>
+            """
+        let response = try await send(
+            Message(input),
+            through: conversation,
+            responseFormat: AtomizationResponseFormat.make()
+        )
+        #if DEBUG
+        print("[REPACK] Atomization response: \(response.toString)")
+        #endif
+
+        let structuredResponse = try JSONDecoder().decode(
+            StructuredAtomizationResponse.self,
+            from: Data(response.toString.utf8)
+        )
+        return structuredResponse.normalizedStatements
+    }
+
+    // Retained temporarily for a manual rollback. This is intentionally not used as a fallback.
     private func atomize(_ caption: String, isRetry: Bool) async throws -> [String] {
         let sampler = try SamplerConfig(topK: 1, topP: 1, temperature: 0)
         let configuration = ConversationConfig(
@@ -185,7 +217,11 @@ final class LiteRTREPACKInferenceEngine: REPACKInferenceEngine {
         try? activeConversation?.cancel()
     }
 
-    private func send(_ message: Message, through conversation: Conversation) async throws -> Message {
+    private func send(
+        _ message: Message,
+        through conversation: Conversation,
+        responseFormat: ResponseFormat? = nil
+    ) async throws -> Message {
         activeConversation = conversation
         defer {
             if activeConversation === conversation {
@@ -194,11 +230,45 @@ final class LiteRTREPACKInferenceEngine: REPACKInferenceEngine {
         }
 
         return try await withTaskCancellationHandler {
-            try await conversation.sendMessage(message)
+            try await conversation.sendMessage(message, responseFormat: responseFormat)
         } onCancel: {
             Task { @MainActor [weak self] in
                 await self?.cancel()
             }
+        }
+    }
+}
+
+enum AtomizationResponseFormat {
+    static func make() throws -> ResponseFormat {
+        try ResponseFormat.json(
+            schema: [
+                "type": "object",
+                "properties": [
+                    "statements": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "minItems": 1
+                    ]
+                ],
+                "required": ["statements"],
+                "additionalProperties": false
+            ]
+        )
+    }
+}
+
+nonisolated struct StructuredAtomizationResponse: Decodable, Sendable {
+    let statements: [String]
+
+    var normalizedStatements: [String] {
+        var seen = Set<String>()
+        return statements.compactMap { statement in
+            let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, seen.insert(trimmed).inserted else {
+                return nil
+            }
+            return trimmed
         }
     }
 }
@@ -227,6 +297,16 @@ nonisolated enum AtomizationRetryPolicy {
     }
 
     static func shouldRetry(_ error: any Error) -> Bool {
+        if error is DecodingError {
+            return true
+        }
+
+        let cocoaError = error as NSError
+        if cocoaError.domain == NSCocoaErrorDomain,
+           cocoaError.code == CocoaError.Code.propertyListReadCorrupt.rawValue {
+            return true
+        }
+
         if let structuredError = error as? StructuredAtomizationError {
             return structuredError == .noToolCall || structuredError == .multipleToolCalls
         }
