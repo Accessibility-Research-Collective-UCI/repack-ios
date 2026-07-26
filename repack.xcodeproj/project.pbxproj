@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		2217BE96301449ED00ECC1F0 /* LiteRTLM in Frameworks */ = {isa = PBXBuildFile; productRef = 2217BE95301449ED00ECC1F0 /* LiteRTLM */; };
+		C0DE00000000000000000003 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE00000000000000000002 /* HuggingFace */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,6 +57,7 @@
 			isa = PBXFrameworksBuildPhase;
 			files = (
 				2217BE96301449ED00ECC1F0 /* LiteRTLM in Frameworks */,
+				C0DE00000000000000000003 /* HuggingFace in Frameworks */,
 			);
 		};
 		B1E000000000000000000003 /* Frameworks */ = {
@@ -94,6 +96,7 @@
 				22171F773013F12100756490 /* Sources */,
 				22171F783013F12100756490 /* Frameworks */,
 				22171F793013F12100756490 /* Resources */,
+				C0DE00000000000000000004 /* Embed Development Models */,
 			);
 			buildRules = (
 			);
@@ -103,6 +106,7 @@
 			name = repack;
 			packageProductDependencies = (
 				2217BE95301449ED00ECC1F0 /* LiteRTLM */,
+				C0DE00000000000000000002 /* HuggingFace */,
 			);
 			productName = tester;
 			productReference = 22171F7B3013F12100756490 /* REPACK Cap.app */;
@@ -159,6 +163,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				2217BE94301449ED00ECC1F0 /* XCLocalSwiftPackageReference "../LiteRT-LM" */,
+				C0DE00000000000000000001 /* XCRemoteSwiftPackageReference "swift-huggingface" */,
 			);
 			preferredProjectObjectVersion = 100;
 			productRefGroup = 22171F7C3013F12100756490 /* Products */;
@@ -183,6 +188,32 @@
 			);
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		C0DE00000000000000000004 /* Embed Development Models */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			inputPaths = (
+				"$(SRCROOT)/DevelopmentAssets/Models",
+			);
+			name = "Embed Development Models";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/DevelopmentModels",
+			);
+			shellPath = /bin/sh;
+			shellScript = (
+				"if [ \"${CONFIGURATION}\" != \"Debug\" ]; then",
+				"    exit 0",
+				"fi",
+				"",
+				"SOURCE_MODELS=\"${SRCROOT}/DevelopmentAssets/Models\"",
+				"DESTINATION_MODELS=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/DevelopmentModels\"",
+				"mkdir -p \"${DESTINATION_MODELS}\"",
+				"rsync -a --delete --include='*.litertlm' --exclude='*' \"${SOURCE_MODELS}/\" \"${DESTINATION_MODELS}/\"",
+				"",
+			);
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		22171F773013F12100756490 /* Sources */ = {
@@ -347,6 +378,7 @@
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = repack/Info.plist;
@@ -526,10 +558,29 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		C0DE00000000000000000001 /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-huggingface.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.9.0;
+			};
+			traits = (
+				Xet,
+			);
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		2217BE95301449ED00ECC1F0 /* LiteRTLM */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = LiteRTLM;
+		};
+		C0DE00000000000000000002 /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0DE00000000000000000001 /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

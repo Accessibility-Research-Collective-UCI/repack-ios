@@ -28,6 +28,45 @@ import SwiftUI
     .environment(\.dynamicTypeSize, .accessibility3)
 }
 
+#Preview("Home · No Models") {
+    NavigationStack {
+        REPACKHomeView(
+            model: .previewNoModels,
+            selectedPhotoItem: .constant(nil),
+            showCamera: .constant(false),
+            showModelManager: .constant(false),
+            captionAction: {},
+            resultsAction: {}
+        )
+    }
+}
+
+#Preview("Home · Model Available, Unselected") {
+    NavigationStack {
+        REPACKHomeView(
+            model: .previewUnloadedModel,
+            selectedPhotoItem: .constant(nil),
+            showCamera: .constant(false),
+            showModelManager: .constant(false),
+            captionAction: {},
+            resultsAction: {}
+        )
+    }
+}
+
+#Preview("Home · Loading Model") {
+    NavigationStack {
+        REPACKHomeView(
+            model: .previewLoadingModel,
+            selectedPhotoItem: .constant(nil),
+            showCamera: .constant(false),
+            showModelManager: .constant(false),
+            captionAction: {},
+            resultsAction: {}
+        )
+    }
+}
+
 #Preview("Home · Interrupted") {
     NavigationStack {
         REPACKHomeView(
@@ -126,6 +165,20 @@ import SwiftUI
 private extension REPACKViewModel {
     static var previewHome: REPACKViewModel {
         previewModel(phase: .ready)
+    }
+
+    static var previewNoModels: REPACKViewModel {
+        REPACKViewModel()
+    }
+
+    static var previewUnloadedModel: REPACKViewModel {
+        let model = previewModel(phase: .missingModel)
+        model.modelURL = nil
+        return model
+    }
+
+    static var previewLoadingModel: REPACKViewModel {
+        previewModel(phase: .loadingModel)
     }
 
     static func previewProcessing(_ progress: REPACKProgress) -> REPACKViewModel {

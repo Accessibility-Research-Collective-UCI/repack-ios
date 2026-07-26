@@ -20,12 +20,12 @@ protocol CaptionExecutionCoordinating: AnyObject {
 }
 
 @MainActor
-protocol CaptionTaskScheduling: AnyObject {
+protocol ContinuedProcessingTaskScheduling: AnyObject {
     var supportsBackgroundGPU: Bool { get }
 
     func register(
         identifier: String,
-        launchHandler: @escaping @MainActor (any CaptionTaskHandling) -> Void
+        launchHandler: @escaping @MainActor (any ContinuedProcessingTaskHandling) -> Void
     ) -> Bool
 
     func submit(identifier: String, title: String, subtitle: String) throws
@@ -33,13 +33,16 @@ protocol CaptionTaskScheduling: AnyObject {
 }
 
 @MainActor
-protocol CaptionTaskHandling: AnyObject {
+protocol ContinuedProcessingTaskHandling: AnyObject {
     var progress: Progress { get }
 
     func setExpirationHandler(_ handler: @escaping @MainActor () -> Void)
     func updateTitle(_ title: String, subtitle: String)
     func setTaskCompleted(success: Bool)
 }
+
+typealias CaptionTaskScheduling = ContinuedProcessingTaskScheduling
+typealias CaptionTaskHandling = ContinuedProcessingTaskHandling
 
 @MainActor
 final class CaptionExecutionCoordinator: CaptionExecutionCoordinating {
@@ -55,7 +58,10 @@ final class CaptionExecutionCoordinator: CaptionExecutionCoordinating {
     private var activeTaskCompleted = false
     private var lastProgressUnitCount: Int64 = 0
 
-    init(scheduler: any CaptionTaskScheduling = SystemCaptionTaskScheduler()) {
+    init(
+        scheduler: any CaptionTaskScheduling =
+            SystemContinuedProcessingTaskScheduler(mode: .captioning)
+    ) {
         self.scheduler = scheduler
     }
 
@@ -189,15 +195,27 @@ private func captionBackgroundLog(_ message: @autoclosure () -> String) {
     #endif
 }
 
+nonisolated enum ContinuedProcessingTaskMode: Sendable {
+    case captioning
+    case modelDownload
+}
+
 @MainActor
-private final class SystemCaptionTaskScheduler: CaptionTaskScheduling {
+final class SystemContinuedProcessingTaskScheduler:
+    ContinuedProcessingTaskScheduling {
+    private let mode: ContinuedProcessingTaskMode
+
+    init(mode: ContinuedProcessingTaskMode) {
+        self.mode = mode
+    }
+
     var supportsBackgroundGPU: Bool {
         BGTaskScheduler.supportedResources.contains(.gpu)
     }
 
     func register(
         identifier: String,
-        launchHandler: @escaping @MainActor (any CaptionTaskHandling) -> Void
+        launchHandler: @escaping @MainActor (any ContinuedProcessingTaskHandling) -> Void
     ) -> Bool {
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: identifier,
@@ -208,7 +226,7 @@ private final class SystemCaptionTaskScheduler: CaptionTaskScheduling {
                     task.setTaskCompleted(success: false)
                     return
                 }
-                launchHandler(SystemCaptionTask(task: task))
+                launchHandler(SystemContinuedProcessingTask(task: task))
             }
         }
     }
@@ -219,8 +237,13 @@ private final class SystemCaptionTaskScheduler: CaptionTaskScheduling {
             title: title,
             subtitle: subtitle
         )
-        request.requiredResources = .gpu
-        request.strategy = .fail
+        switch mode {
+        case .captioning:
+            request.requiredResources = .gpu
+            request.strategy = .fail
+        case .modelDownload:
+            request.strategy = .queue
+        }
         try BGTaskScheduler.shared.submit(request)
     }
 
@@ -230,7 +253,8 @@ private final class SystemCaptionTaskScheduler: CaptionTaskScheduling {
 }
 
 @MainActor
-private final class SystemCaptionTask: CaptionTaskHandling {
+private final class SystemContinuedProcessingTask:
+    ContinuedProcessingTaskHandling {
     let progress: Progress
 
     private let task: BGContinuedProcessingTask

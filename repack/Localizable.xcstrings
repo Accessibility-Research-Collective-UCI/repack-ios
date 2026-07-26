@@ -1,12 +1,40 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "%@ · %@" : {
+    "" : {
+
+    },
+    "%@ could not be verified. No downloaded file was kept." : {
+
+    },
+    "%@ is already downloaded and verified." : {
+
+    },
+    "%@ selected." : {
+
+    },
+    "%@ was also selected because of model dependencies." : {
+
+    },
+    "%@ was downloaded. Select it to load it." : {
+
+    },
+    "%@, %@" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@ · %2$@"
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "%@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@"
           }
         }
       }
@@ -63,10 +91,10 @@
     "10" : {
 
     },
-    "A compatible model is required." : {
+    "A higher threshold retain only details supported more consistently across caption samples." : {
 
     },
-    "A higher threshold retain only details supported more consistently across caption samples." : {
+    "Already Downloaded" : {
 
     },
     "Atomic Statements and Scores" : {
@@ -78,13 +106,16 @@
     "Augmentation samples" : {
 
     },
-    "Better captions, but slower; runs on your device. Gemma 4 E2B is also needed." : {
+    "Background Download Unavailable" : {
 
     },
     "BLEU average:" : {
 
     },
     "Breaking down captions" : {
+
+    },
+    "Bundled with this Debug build" : {
 
     },
     "Camera" : {
@@ -96,6 +127,12 @@
     "Cancel" : {
 
     },
+    "Cancel Download" : {
+
+    },
+    "Cancel Download?" : {
+
+    },
     "Caption" : {
 
     },
@@ -103,9 +140,6 @@
 
     },
     "Caption breakdown complete." : {
-
-    },
-    "Caption complete" : {
 
     },
     "Caption complete." : {
@@ -141,23 +175,69 @@
     "Captioning was stopped by the system. Restart Captioning to begin again from the start." : {
 
     },
-    "Choose a compatible .litertlm model bundle." : {
-
-    },
     "Choose an Image" : {
 
     },
     "Custom" : {
 
     },
+    "DEBUG: Gemma 4 E4B also requires Gemma 4 E2B. Both models will be downloaded in order and temporarily use approximately %@. The downloaded test files will be deleted after validation." : {
+
+    },
+    "DEBUG: This download will temporarily use approximately %@. The downloaded test file will be deleted after validation." : {
+
+    },
+    "Delete Selected…" : {
+
+    },
     "Describe" : {
 
     },
-    "Done" : {
+    "Deselect All" : {
 
     },
     "Download" : {
 
+    },
+    "Download %@?" : {
+
+    },
+    "Download Cancelled" : {
+
+    },
+    "Download Complete" : {
+
+    },
+    "Download complete." : {
+
+    },
+    "Download Failed" : {
+
+    },
+    "Download Stopped" : {
+
+    },
+    "Download with App Open" : {
+
+    },
+    "Downloaded" : {
+
+    },
+    "Downloaded from Hugging Face" : {
+
+    },
+    "Downloading %@" : {
+
+    },
+    "Downloading %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading %1$@, %2$@"
+          }
+        }
+      }
     },
     "Downloading %@: %@" : {
       "localizations" : {
@@ -169,16 +249,39 @@
         }
       }
     },
+    "Downloading %lld of %lld, %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading %1$lld of %2$lld, %3$@, %4$@"
+          }
+        }
+      }
+    },
+    "Downloading %lld of %lld: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading %1$lld of %2$lld: %3$@"
+          }
+        }
+      }
+    },
+    "Downloading Models" : {
+
+    },
     "Elapsed" : {
 
     },
     "Enter a prompt before captioning the image." : {
 
     },
-    "Fastest; runs on your device" : {
+    "Gemma 4 E2B" : {
 
     },
-    "Gemma 4 E2B" : {
+    "Gemma 4 E2B is already downloaded. Gemma 4 E4B will use approximately %@ on this iPhone." : {
 
     },
     "Gemma 4 E2B is required to process captions sampled with E4B." : {
@@ -187,7 +290,16 @@
     "Gemma 4 E4B" : {
 
     },
+    "Gemma 4 E4B also requires Gemma 4 E2B. Both models will be downloaded in order and use approximately %@ on this iPhone." : {
+
+    },
+    "Gemma 4 E4B and its required model were downloaded. Select a model to load it." : {
+
+    },
     "Gemma 4 E4B is not available on this iPhone." : {
+
+    },
+    "Gemma 4 E4B will also be selected because it requires this model." : {
 
     },
     "Generate a caption before changing its threshold." : {
@@ -205,7 +317,7 @@
     "Image Captioning" : {
 
     },
-    "Import Model" : {
+    "Imported" : {
 
     },
     "Imported Model" : {
@@ -214,19 +326,25 @@
     "Information Verification" : {
 
     },
-    "Interrupted" : {
-
-    },
     "Interrupted Caption" : {
 
     },
-    "Loading model" : {
+    "Its unused Gemma 4 E2B dependency will be selected by default." : {
+
+    },
+    "Keep Downloading" : {
+
+    },
+    "Keep this page open while the models are downloading." : {
 
     },
     "Loading model on-device..." : {
 
     },
-    "Manage Models" : {
+    "Manage Installed Models" : {
+
+    },
+    "Manage Storage" : {
 
     },
     "Model" : {
@@ -235,10 +353,22 @@
     "Model download" : {
 
     },
-    "Model ready." : {
+    "Model download cancelled." : {
 
     },
-    "Model unavailable" : {
+    "Model download complete." : {
+
+    },
+    "Model download failed. %@" : {
+
+    },
+    "Model download started." : {
+
+    },
+    "Model download test completed. Temporary files were removed." : {
+
+    },
+    "Model ready." : {
 
     },
     "Model: %@, running %@" : {
@@ -283,6 +413,9 @@
     "No model selected" : {
 
     },
+    "No models are installed. Use Manage Installed Models to download one." : {
+
+    },
     "Not retained" : {
 
     },
@@ -296,6 +429,9 @@
 
     },
     "On This Device" : {
+
+    },
+    "Opens models available on this device." : {
 
     },
     "Original Caption" : {
@@ -322,9 +458,6 @@
     "Preparing vision model" : {
 
     },
-    "Processing" : {
-
-    },
     "Product" : {
 
     },
@@ -334,16 +467,23 @@
     "Prompt" : {
 
     },
-    "Ready" : {
+    "Remove" : {
 
     },
-    "Ready to restart" : {
-
-    },
-    "Ready to retry" : {
-
+    "Remove %@? This will recover approximately %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remove %1$@? This will recover approximately %2$@."
+          }
+        }
+      }
     },
     "Remove Image" : {
+
+    },
+    "Remove Models?" : {
 
     },
     "Removes the current caption and image." : {
@@ -379,6 +519,9 @@
     "Repackaging the verified statements." : {
 
     },
+    "Required by Gemma 4 E4B" : {
+
+    },
     "Reset" : {
 
     },
@@ -388,13 +531,16 @@
     "Result: %@" : {
 
     },
-    "Results" : {
-
-    },
     "Retained" : {
 
     },
     "Runs on your device" : {
+
+    },
+    "Runs on your device. Better captions, but slower. Gemma 4 E2B is also needed." : {
+
+    },
+    "Runs on your device. Fastest captions." : {
 
     },
     "Sample" : {
@@ -424,13 +570,31 @@
     "Select a photo or take a new one to begin." : {
 
     },
+    "Select All" : {
+
+    },
+    "Select Model" : {
+
+    },
     "Selected image" : {
 
     },
-    "Selected model" : {
+    "Selected Model" : {
+
+    },
+    "Selected models removed." : {
+
+    },
+    "Selects and loads this model." : {
+
+    },
+    "Selects this model for removal." : {
 
     },
     "Similarity scoring complete." : {
+
+    },
+    "Space to recover: %@" : {
 
     },
     "Start Over" : {
@@ -439,10 +603,35 @@
     "Start Over?" : {
 
     },
-    "Stopped" : {
+    "Starting download %lld of %lld: %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Starting download %1$lld of %2$lld: %3$@."
+          }
+        }
+      }
+    },
+    "Stops the download and removes temporary files." : {
+
+    },
+    "Tap Selected Model to choose and load a model." : {
 
     },
     "The atomic statements could not be prepared for repackaging." : {
+
+    },
+    "The current download will stop and temporary files will be removed." : {
+
+    },
+    "The download size for %@ could not be determined." : {
+
+    },
+    "The download stopped because background downloading was unavailable. Keep the app open and try again." : {
+
+    },
+    "The downloaded model file could not be found." : {
 
     },
     "The image could not be prepared." : {
@@ -475,6 +664,9 @@
     "The selected file is not a supported image." : {
 
     },
+    "The selected model is not loaded." : {
+
+    },
     "The selected photo could not be read." : {
 
     },
@@ -488,6 +680,22 @@
 
     },
     "The vision model is not ready." : {
+
+    },
+    "There is not enough storage available. This download needs approximately %@, but %@ is available." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "There is not enough storage available. This download needs approximately %1$@, but %2$@ is available."
+          }
+        }
+      }
+    },
+    "This download will use approximately %@ on this iPhone." : {
+
+    },
+    "This iPhone could not start a background download. You can continue with a foreground download, but you must keep the app open until it finishes." : {
 
     },
     "This will remove the current image and REPACK-processed caption." : {
@@ -509,6 +717,15 @@
 
     },
     "View Results" : {
+
+    },
+    "Waiting for download to start" : {
+
+    },
+    "Waiting to start" : {
+
+    },
+    "Waiting to start…" : {
 
     }
   },

@@ -5,30 +5,11 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.uci.repack-tester.captioning</string>
+		<string>com.uci.repack-tester.model-download.*</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>This app requires camera access to take photos for captioning.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app requires photo library access to select photos for captioning.</string>
-	<key>UTImportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>LiteRT-LM Model</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.uci.repack.litertlm</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>litertlm</string>
-				</array>
-			</dict>
-		</dict>
-	</array>
 </dict>
 </plist>

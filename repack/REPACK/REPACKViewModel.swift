@@ -35,9 +35,29 @@ final class REPACKViewModel {
             }
         }
     }
+    enum ModelDownloadAlert: Identifiable, Equatable {
+        case confirmation(ModelDownloadPlan)
+        case foregroundFallback(ModelDownloadPlan)
+        case message(id: UUID, title: String, message: String)
+
+        var id: String {
+            switch self {
+            case .confirmation(let plan):
+                "confirmation-\(plan.id)"
+            case .foregroundFallback(let plan):
+                "foreground-\(plan.id)"
+            case .message(let id, _, _):
+                "message-\(id)"
+            }
+        }
+    }
     var phase: Phase = .missingModel
     var localModels: [LocalModel] = []
+    var modelStorageItems: [ModelStorageItem] = []
     var modelURL: URL?
+    var modelDownloadProgress: ModelDownloadProgress?
+    var isModelDownloadWaiting = false
+    var modelDownloadAlert: ModelDownloadAlert?
     var selectedImageURL: URL?
     var promptChoice: PromptChoice = .describe {
         didSet {
@@ -68,6 +88,8 @@ final class REPACKViewModel {
     private let engineFactory: any REPACKEngineFactory
     private let devicePolicy: REPACKDevicePolicy
     private let captionExecutionCoordinator: any CaptionExecutionCoordinating
+    private let modelDownloadExecutionCoordinator: any ModelDownloadExecutionCoordinating
+    private let modelDownloadNotifier: any ModelDownloadNotifying
     private let pendingRunStore: any PendingCaptionRunStoring
     private let clock = ContinuousClock()
     private var pipeline: REPACK?
@@ -79,6 +101,8 @@ final class REPACKViewModel {
     private var thresholdRequestID = UUID()
     private var currentRunID: UUID?
     private var executionMode: CaptionExecutionMode?
+    private var modelDownloadExecutionMode: ModelDownloadExecutionMode?
+    private var modelDownloadTask: Task<Void, Never>?
     private var isLoadingPipeline = false
 
     init(
@@ -88,6 +112,10 @@ final class REPACKViewModel {
         devicePolicy: REPACKDevicePolicy = .current,
         captionExecutionCoordinator: any CaptionExecutionCoordinating =
             CaptionExecutionCoordinator.shared,
+        modelDownloadExecutionCoordinator: any ModelDownloadExecutionCoordinating =
+            ModelDownloadExecutionCoordinator.shared,
+        modelDownloadNotifier: any ModelDownloadNotifying =
+            ModelDownloadNotifier.shared,
         pendingRunStore: any PendingCaptionRunStoring =
             UserDefaultsPendingCaptionRunStore()
     ) {
@@ -96,6 +124,8 @@ final class REPACKViewModel {
         self.engineFactory = engineFactory ?? LiteRTREPACKEngineFactory.shared
         self.devicePolicy = devicePolicy
         self.captionExecutionCoordinator = captionExecutionCoordinator
+        self.modelDownloadExecutionCoordinator = modelDownloadExecutionCoordinator
+        self.modelDownloadNotifier = modelDownloadNotifier
         self.pendingRunStore = pendingRunStore
     }
     var selectedModelName: String {
@@ -144,6 +174,10 @@ final class REPACKViewModel {
         case .missingModel, .ready, .interrupted, .output, .failed:
             false
         }
+    }
+
+    var isModelDownloadActive: Bool {
+        isModelDownloadWaiting || modelDownloadTask != nil || modelDownloadProgress != nil
     }
 
     var isEngineReady: Bool {
@@ -199,6 +233,7 @@ final class REPACKViewModel {
 extension REPACKViewModel {
     func prepareForLaunch() async {
         let pendingRun = await restorePendingRun()
+        await modelManager.cleanDownloadStagingDirectory()
         try? await imageStore.removeOrphans(keeping: ownedImageURLs)
         await refreshLocalModels(preferredModelFilename: pendingRun?.modelFilename)
     }
@@ -206,16 +241,19 @@ extension REPACKViewModel {
     func refreshLocalModels(preferredModelFilename: String? = nil) async {
         let refreshed = modelManager.refreshLocalModels(currentModelURL: modelURL)
         localModels = refreshed.models
+        modelStorageItems = modelManager.storageItems(from: refreshed.models)
         let preferredSelection = preferredModelFilename.flatMap { filename in
             refreshed.models.first { model in
                 model.url.lastPathComponent == filename && supportsModel(at: model.url)
             }?.url
         }
-        let supportedSelection = refreshed.selectedModelURL.flatMap { selectedURL in
-            supportsModel(at: selectedURL) ? selectedURL : nil
+        let supportedSelection = modelURL.flatMap { selectedURL in
+            refreshed.models.first {
+                ModelManager.sameFile($0.url, selectedURL)
+                    && supportsModel(at: $0.url)
+            }?.url
         }
-        let resolvedSelection =
-            preferredSelection ?? supportedSelection ?? selectableLocalModels.first?.url
+        let resolvedSelection = preferredSelection ?? supportedSelection
         let selectionChanged = !ModelManager.sameFile(modelURL, resolvedSelection)
         modelURL = resolvedSelection
 
@@ -223,24 +261,28 @@ extension REPACKViewModel {
             modelManager.rememberSelectedModel(resolvedSelection)
         }
 
-        if modelURL == nil {
-            phase = .missingModel
-        } else if selectionChanged {
+        if selectionChanged {
             await discardPipelineAndRun()
-            phase = .loadingModel
+        }
+
+        if modelURL == nil || selectionChanged || pipeline == nil {
+            phase = .missingModel
         }
     }
 
     func selectModel(_ model: LocalModel) async {
+        await prepareModelSelection(model)
+        await loadPreparedModel()
+    }
+
+    func prepareModelSelection(_ model: LocalModel) async {
         guard supportsModel(at: model.url) else {
             errorMessage = REPACKError.e4BUnavailableOnDevice.localizedDescription
             return
         }
 
+        modelManager.markExplicitOwnership(of: model)
         if ModelManager.sameFile(modelURL, model.url) {
-            if pipeline == nil {
-                await loadSelectedModel()
-            }
             return
         }
 
@@ -248,55 +290,277 @@ extension REPACKViewModel {
         await removeAttachedImage()
         modelURL = model.url
         modelManager.rememberSelectedModel(model.url)
+        phase = .missingModel
+    }
+
+    func loadPreparedModel() async {
+        guard pipeline == nil else { return }
         await loadSelectedModel()
     }
 
-    func downloadModel(_ model: DownloadableModel) async {
+    func deletionSelection(
+        toggling item: ModelStorageItem,
+        isSelected: Bool,
+        current: Set<String>
+    ) -> Set<String> {
+        modelManager.deletionSelection(
+            toggling: item,
+            isSelected: isSelected,
+            current: current,
+            items: modelStorageItems
+        )
+    }
+
+    func deletionPlan(for selection: Set<String>) -> ModelDeletionPlan {
+        modelManager.deletionPlan(
+            selection: selection,
+            items: modelStorageItems
+        )
+    }
+
+    func deleteModels(_ plan: ModelDeletionPlan) async {
+        guard !isBusy, !plan.items.isEmpty else { return }
+
+        let removesSelectedModel = plan.items.contains {
+            ModelManager.sameFile($0.model.url, modelURL)
+        }
+        if removesSelectedModel {
+            await discardPipelineAndRun()
+        }
+
+        do {
+            try modelManager.deleteModels(plan)
+            await refreshLocalModels()
+            phase = .missingModel
+            announce(String(localized: "Selected models removed."))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func prepareModelDownload(_ model: DownloadableModel) async {
         guard supportsDownload(model) else {
             errorMessage = REPACKError.e4BUnavailableOnDevice.localizedDescription
             return
         }
 
-        await discardPipelineAndRun()
-        phase = .downloading(name: model.displayName, progress: 0)
-
         do {
-            let downloadedURL = try await modelManager.download(model: model) { progress in
-                await MainActor.run {
-                    self.phase = .downloading(name: model.displayName, progress: progress)
-                }
+            let plan = try await modelManager.prepareDownloadPlan(for: model)
+            if plan.files.isEmpty {
+                modelDownloadAlert = .message(
+                    id: UUID(),
+                    title: String(localized: "Already Downloaded"),
+                    message: String(
+                        localized: "\(model.displayName) is already downloaded and verified."
+                    )
+                )
+            } else {
+                modelDownloadAlert = .confirmation(plan)
             }
-            modelURL = downloadedURL
-            modelManager.rememberSelectedModel(downloadedURL)
-            await refreshLocalModels()
-            await loadSelectedModel()
-        } catch is CancellationError {
-            phase = modelURL == nil ? .missingModel : .failed(
-                String(localized: "The model download was cancelled.")
-            )
         } catch {
-            fail(error)
+            presentModelDownloadError(error)
         }
     }
 
-    func importModel(from selectedURL: URL) async {
-        guard supportsModel(at: selectedURL) else {
-            errorMessage = REPACKError.e4BUnavailableOnDevice.localizedDescription
-            return
-        }
+    func confirmModelDownload(_ plan: ModelDownloadPlan) async {
+        guard !isModelDownloadActive else { return }
 
+        await modelDownloadNotifier.requestAuthorizationIfNeeded()
         await discardPipelineAndRun()
-        phase = .loadingModel
+        phase = .downloading(name: plan.requestedModel.displayName, progress: 0)
+        modelDownloadProgress = nil
+        isModelDownloadWaiting = true
 
-        do {
-            let importedURL = try await modelManager.importModel(from: selectedURL)
-            modelURL = importedURL
-            modelManager.rememberSelectedModel(importedURL)
-            await refreshLocalModels()
-            await loadSelectedModel()
-        } catch {
-            fail(error)
+        let start: @MainActor @Sendable () -> Void = { [weak self] in
+            self?.beginModelDownload(plan, mode: .backgroundProtected)
         }
+        let expiration: @MainActor @Sendable () -> Void = { [weak self] in
+            self?.expireModelDownload()
+        }
+        let mode = modelDownloadExecutionCoordinator.submit(
+            transactionID: plan.id,
+            totalBytes: plan.totalBytes,
+            start: start,
+            expiration: expiration
+        )
+
+        if mode == .foregroundOnly {
+            isModelDownloadWaiting = false
+            finishModelDownloadWithoutLoading()
+            modelDownloadAlert = .foregroundFallback(plan)
+        }
+    }
+
+    func confirmForegroundModelDownload(_ plan: ModelDownloadPlan) {
+        guard !isModelDownloadActive else { return }
+
+        phase = .downloading(name: plan.requestedModel.displayName, progress: 0)
+        beginModelDownload(plan, mode: .foregroundOnly)
+    }
+
+    func cancelModelDownload() async {
+        guard isModelDownloadActive else { return }
+
+        let activeTask = modelDownloadTask
+        modelDownloadTask = nil
+        activeTask?.cancel()
+        isModelDownloadWaiting = false
+        modelDownloadProgress = nil
+        finishModelDownloadWithoutLoading()
+        await modelManager.cancelDownload()
+        modelDownloadExecutionCoordinator.complete(success: false)
+        modelDownloadExecutionMode = nil
+        presentModelDownloadMessage(
+            title: String(localized: "Download Cancelled"),
+            message: String(localized: "The model download was cancelled.")
+        )
+        announce(String(localized: "Model download cancelled."))
+    }
+
+    private func beginModelDownload(
+        _ plan: ModelDownloadPlan,
+        mode: ModelDownloadExecutionMode
+    ) {
+        guard modelDownloadTask == nil else { return }
+
+        isModelDownloadWaiting = false
+        modelDownloadExecutionMode = mode
+        announce(String(localized: "Model download started."))
+
+        modelDownloadTask = Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                await discardPipelineAndRun()
+                try Task.checkCancellation()
+                let outcome = try await modelManager.download(plan: plan) { progress in
+                    await MainActor.run {
+                        self.updateModelDownloadProgress(progress)
+                    }
+                }
+                try Task.checkCancellation()
+
+                modelDownloadExecutionCoordinator.complete(success: true)
+                modelDownloadTask = nil
+                modelDownloadExecutionMode = nil
+                modelDownloadProgress = nil
+
+                switch outcome {
+                case .installed:
+                    await refreshLocalModels()
+                case .validatedAndRemoved:
+                    break
+                }
+                finishModelDownloadWithoutLoading()
+
+                let message = modelDownloadCompletionMessage(for: plan)
+                if UIApplication.shared.applicationState == .active {
+                    presentModelDownloadMessage(
+                        title: String(localized: "Download Complete"),
+                        message: message
+                    )
+                } else {
+                    let didNotify = await modelDownloadNotifier.notifyCompletion(
+                        message: message
+                    )
+                    if !didNotify {
+                        presentModelDownloadMessage(
+                            title: String(localized: "Download Complete"),
+                            message: message
+                        )
+                    }
+                }
+                announce(String(localized: "Model download complete."))
+            } catch is CancellationError {
+                guard modelDownloadTask != nil else { return }
+                modelDownloadExecutionCoordinator.complete(success: false)
+                modelDownloadTask = nil
+                modelDownloadExecutionMode = nil
+                modelDownloadProgress = nil
+                finishModelDownloadWithoutLoading()
+                presentModelDownloadMessage(
+                    title: String(localized: "Download Cancelled"),
+                    message: String(localized: "The model download was cancelled.")
+                )
+                announce(String(localized: "Model download cancelled."))
+            } catch {
+                modelDownloadExecutionCoordinator.complete(success: false)
+                modelDownloadTask = nil
+                modelDownloadExecutionMode = nil
+                modelDownloadProgress = nil
+                finishModelDownloadWithoutLoading()
+                presentModelDownloadError(error)
+            }
+        }
+    }
+
+    private func updateModelDownloadProgress(_ progress: ModelDownloadProgress) {
+        guard modelDownloadTask != nil else { return }
+
+        let previousModel = modelDownloadProgress?.currentModel
+        modelDownloadProgress = progress
+        phase = .downloading(
+            name: progress.requestedModel.displayName,
+            progress: progress.fractionCompleted
+        )
+        modelDownloadExecutionCoordinator.report(progress)
+
+        if previousModel != nil, previousModel != progress.currentModel {
+            announce(
+                String(
+                    localized:
+                        "Starting download \(progress.fileIndex) of \(progress.fileCount): \(progress.currentModel.displayName)."
+                )
+            )
+        }
+    }
+
+    private func expireModelDownload() {
+        modelDownloadTask?.cancel()
+    }
+
+    private func finishModelDownloadWithoutLoading() {
+        phase = .missingModel
+    }
+
+    private func modelDownloadCompletionMessage(
+        for plan: ModelDownloadPlan
+    ) -> String {
+        if plan.validatesWithoutKeepingFiles {
+            return String(
+                localized:
+                    "Model download test completed. Temporary files were removed."
+            )
+        }
+        if plan.requestedModel == .e4b,
+            plan.files.contains(where: { $0.model == .e2b }) {
+            return String(
+                localized:
+                    "Gemma 4 E4B and its required model were downloaded. Select a model to load it."
+            )
+        }
+        return String(
+            localized:
+                "\(plan.requestedModel.displayName) was downloaded. Select it to load it."
+        )
+    }
+
+    private func presentModelDownloadError(_ error: any Error) {
+        presentModelDownloadMessage(
+            title: String(localized: "Download Failed"),
+            message: error.localizedDescription
+        )
+        announce(
+            String(localized: "Model download failed. \(error.localizedDescription)")
+        )
+    }
+
+    private func presentModelDownloadMessage(title: String, message: String) {
+        modelDownloadAlert = .message(
+            id: UUID(),
+            title: title,
+            message: message
+        )
     }
 
     func attachImage(data: Data) async {
@@ -385,13 +649,17 @@ extension REPACKViewModel {
     }
 
     func handleScenePhase(_ scenePhase: ScenePhase) async {
-        if scenePhase == .active {
-            guard pipeline == nil,
-                  modelURL != nil,
-                  phase == .loadingModel || phase == .missingModel else {
-                return
-            }
-            await loadSelectedModel()
+        if scenePhase == .background,
+            isModelDownloadActive,
+            modelDownloadExecutionMode == .foregroundOnly {
+            await cancelModelDownload()
+            presentModelDownloadMessage(
+                title: String(localized: "Download Stopped"),
+                message: String(
+                    localized:
+                        "The download stopped because background downloading was unavailable. Keep the app open and try again."
+                )
+            )
             return
         }
 
@@ -546,7 +814,7 @@ private extension REPACKViewModel {
             completedElapsed = nil
             errorMessage = nil
             pipeline?.discardCurrentRun()
-            phase = pipeline == nil ? .loadingModel : .ready
+            phase = pipeline == nil ? .missingModel : .ready
         default:
             break
         }
@@ -573,8 +841,6 @@ private extension REPACKViewModel {
 
         if pipeline != nil {
             phase = .ready
-        } else if modelURL != nil {
-            phase = .loadingModel
         } else {
             phase = .missingModel
         }
@@ -598,8 +864,6 @@ private extension REPACKViewModel {
 
         if pipeline != nil {
             phase = .ready
-        } else if modelURL != nil {
-            phase = .loadingModel
         } else {
             phase = .missingModel
         }

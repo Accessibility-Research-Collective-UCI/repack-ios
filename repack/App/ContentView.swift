@@ -1,6 +1,5 @@
 import PhotosUI
 import SwiftUI
-import UniformTypeIdentifiers
 import UIKit
 
 struct ContentView: View {
@@ -14,7 +13,6 @@ struct ContentView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var isCameraPresented = false
     @State private var isModelManagerPresented = false
-    @State private var isImporterPresented = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -79,26 +77,7 @@ struct ContentView: View {
             .ignoresSafeArea()
         }
         .sheet(isPresented: $isModelManagerPresented) {
-            ModelManagerView(
-                model: model,
-                importAction: {
-                    isModelManagerPresented = false
-                    isImporterPresented = true
-                }
-            )
-        }
-        .fileImporter(
-            isPresented: $isImporterPresented,
-            allowedContentTypes: [.liteRTLMModel]
-        ) { result in
-            switch result {
-            case .success(let url):
-                Task {
-                    await model.importModel(from: url)
-                }
-            case .failure(let error):
-                model.errorMessage = error.localizedDescription
-            }
+            ModelManagerView(model: model)
         }
         .alert(
             "REPACK",

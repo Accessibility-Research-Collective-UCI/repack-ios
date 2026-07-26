@@ -9,6 +9,7 @@ struct REPACKHomeView: View {
     @Binding var showModelManager: Bool
     let captionAction: () -> Void
     let resultsAction: () -> Void
+    @State private var isModelSelectionPresented = false
 
     var body: some View {
         Form {
@@ -23,58 +24,70 @@ struct REPACKHomeView: View {
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .navigationTitle("📦 REPACK")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showModelManager = true
-                } label: {
-                    Label("Manage Models", systemImage: "shippingbox")
-                }
-            }
+        .sheet(isPresented: $isModelSelectionPresented) {
+            ModelSelectionView(model: model)
         }
     }
 
     private var modelSection: some View {
-        Section("Model") {
-            HStack {
-                Image(systemName: modelIcon)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(
-                        model.isEngineReady || model.phase == .output ? .green : .secondary
-                    )
-                    .accessibilityHidden(true)
+        Section {
+            Button {
+                isModelSelectionPresented = true
+            } label: {
+                HStack {
+                    if model.isBusy {
+                        ProgressView()
+                            .accessibilityHidden(true)
+                    } else {
+                        Image(systemName: modelIcon)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(
+                                model.isEngineReady || model.phase == .output
+                                    ? .green
+                                    : .secondary
+                            )
+                            .accessibilityHidden(true)
+                    }
 
-                VStack(alignment: .leading) {
-                    Text(model.selectedModelName)
-                        .font(.headline)
-                    Text(modelStatus)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if model.isBusy {
-                    ProgressView()
-                        .accessibilityLabel("Loading model")
-                }
-            }
-            .accessibilityElement(children: .combine)
-
-            if !model.selectableLocalModels.isEmpty {
-                Picker("Selected model", selection: selectedModelPath) {
-                    ForEach(model.selectableLocalModels) { localModel in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(localModel.displayName)
-                            Text(localModel.detail)
-                                .font(.caption)
+                    VStack(alignment: .leading) {
+                        Text("Selected Model")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        if let modelURL = model.modelURL {
+                            Text(DownloadableModel.displayName(for: modelURL))
+                                .font(.headline)
+                            Text(selectedModelDetail(for: modelURL))
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
-                            .tag(localModel.url.path)
+                    }
+
+                    Spacer()
+
+                    if !model.isBusy {
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
                     }
                 }
-                .pickerStyle(.navigationLink)
-                .disabled(model.isBusy)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Selected Model")
+            .accessibilityValue(selectedModelAccessibilityValue)
+            .accessibilityHint("Opens models available on this device.")
+            .disabled(model.isBusy || model.selectableLocalModels.isEmpty)
+
+            Button {
+                showModelManager = true
+            } label: {
+                Label("Manage Installed Models", systemImage: "shippingbox")
+            }
+            .disabled(model.isBusy)
+        } header: {
+            Text("Model")
+        } footer: {
+            if let modelSectionPrompt {
+                Text(modelSectionPrompt)
             }
         }
     }
@@ -252,40 +265,39 @@ struct REPACKHomeView: View {
         }
     }
 
-    private var selectedModelPath: Binding<String> {
-        Binding {
-            model.modelURL?.path ?? ""
-        } set: { path in
-            guard let selected = model.localModels.first(where: { $0.url.path == path }) else {
-                return
-            }
-            Task {
-                await model.selectModel(selected)
-            }
-        }
-    }
-
-    private var modelStatus: String {
+    private func selectedModelDetail(for modelURL: URL) -> String {
         switch model.phase {
-        case .missingModel:
-            String(localized: "A compatible model is required.")
         case .loadingModel:
             String(localized: "Loading model on-device...")
         case .downloading(let name, let progress):
             String(localized: "Downloading \(name): \(progress, format: .percent.precision(.fractionLength(0)))")
-        case .ready:
-            String(localized: "Ready")
-        case .processing:
-            String(localized: "Processing")
-        case .interrupted:
-            String(localized: "Ready to restart")
-        case .output:
-            String(localized: "Caption complete")
-        case .failed:
-            model.isEngineReady
-                ? String(localized: "Ready to retry")
-                : String(localized: "Model unavailable")
+        case .missingModel, .ready, .processing, .interrupted, .output, .failed:
+            DownloadableModel.shortDescription(for: modelURL)
         }
+    }
+
+    private var selectedModelAccessibilityValue: String {
+        guard let modelURL = model.modelURL else {
+            return String(localized: "No model selected")
+        }
+        return String(
+            localized:
+                "\(DownloadableModel.displayName(for: modelURL)), \(selectedModelDetail(for: modelURL))"
+        )
+    }
+
+    private var modelSectionPrompt: String? {
+        guard model.phase == .missingModel else { return nil }
+        if model.localModels.isEmpty {
+            return String(
+                localized:
+                    "No models are installed. Use Manage Installed Models to download one."
+            )
+        }
+        if model.modelURL == nil {
+            return String(localized: "Tap Selected Model to choose and load a model.")
+        }
+        return String(localized: "The selected model is not loaded.")
     }
 
     private var modelIcon: String {

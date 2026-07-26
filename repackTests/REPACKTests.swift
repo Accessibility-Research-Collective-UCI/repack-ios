@@ -21,7 +21,7 @@ struct REPACKTests {
         let e4B = try #require(DownloadableModel(modelURL: e4BURL))
 
         #expect(e2B.displayName == "Gemma 4 E2B")
-        #expect(e2B.shortDescription == "Fastest; runs on your device")
+        #expect(e2B.shortDescription == "Runs on your device. Fastest captions.")
         #expect(e4B.displayName == "Gemma 4 E4B")
         #expect(e4B.shortDescription.contains("Gemma 4 E2B is also needed"))
 
@@ -361,26 +361,102 @@ struct REPACKTests {
         #expect(pendingRunStore.run != nil)
     }
 
-    @Test("Model loading waits for an active scene")
-    func modelLoadingWaitsForActiveScene() async {
+    @Test("Scene activation does not load a model without explicit selection")
+    func modelLoadingRequiresExplicitSelection() async {
         let fixture = Fixture()
         let viewModel = REPACKViewModel(engineFactory: fixture.factory)
         viewModel.modelURL = fixture.modelURL
         viewModel.localModels = [
             LocalModel(url: fixture.modelURL, isBundled: false)
         ]
-        viewModel.phase = .loadingModel
+        viewModel.phase = .missingModel
 
         await viewModel.handleScenePhase(.inactive)
         await viewModel.handleScenePhase(.background)
+        await viewModel.handleScenePhase(.active)
 
         #expect(fixture.factory.events.isEmpty)
-        #expect(viewModel.phase == .loadingModel)
+        #expect(viewModel.phase == .missingModel)
 
-        await viewModel.handleScenePhase(.active)
+        await viewModel.selectModel(
+            LocalModel(url: fixture.modelURL, isBundled: false)
+        )
 
         #expect(fixture.factory.events == [.validate, .makeVision])
         #expect(viewModel.phase == .ready)
+    }
+
+    @Test("Model selection is visible before loading begins")
+    func modelSelectionPrecedesLoading() async {
+        let fixture = Fixture()
+        let viewModel = REPACKViewModel(engineFactory: fixture.factory)
+        let localModel = LocalModel(url: fixture.modelURL, isBundled: false)
+        viewModel.localModels = [localModel]
+
+        await viewModel.prepareModelSelection(localModel)
+
+        #expect(ModelManager.sameFile(viewModel.modelURL, fixture.modelURL))
+        #expect(viewModel.phase == .missingModel)
+        #expect(fixture.factory.events.isEmpty)
+
+        await viewModel.loadPreparedModel()
+
+        #expect(fixture.factory.events == [.validate, .makeVision])
+        #expect(viewModel.phase == .ready)
+    }
+
+    @Test("Cancelling a model download leaves the previous model unloaded")
+    func cancellingDownloadLeavesModelUnloaded() async throws {
+        let fixture = Fixture()
+        let downloadService = LifecycleModelDownloadService(mode: .waitForCancellation)
+        let viewModel = REPACKViewModel(
+            modelManager: ModelManager(downloadService: downloadService),
+            engineFactory: fixture.factory,
+            modelDownloadExecutionCoordinator: FakeModelDownloadExecutionCoordinator(),
+            modelDownloadNotifier: FakeModelDownloadNotifier()
+        )
+        let localModel = LocalModel(url: fixture.modelURL, isBundled: false)
+        viewModel.localModels = [localModel]
+        await viewModel.selectModel(localModel)
+        let loadedEvents = fixture.factory.events
+
+        viewModel.confirmForegroundModelDownload(modelDownloadPlan())
+        try await waitUntil { fixture.factory.visionEngine == nil }
+        await viewModel.cancelModelDownload()
+        await viewModel.handleScenePhase(.active)
+
+        #expect(viewModel.phase == .missingModel)
+        #expect(!viewModel.isEngineReady)
+        #expect(fixture.factory.events == loadedEvents)
+        #expect(fixture.factory.visionState.cancellationCount == 1)
+    }
+
+    @Test("A completed model download remains unloaded")
+    func completedDownloadLeavesModelUnloaded() async throws {
+        let fixture = Fixture()
+        let downloadService = LifecycleModelDownloadService(
+            mode: .complete(.installed(fixture.modelURL))
+        )
+        let viewModel = REPACKViewModel(
+            modelManager: ModelManager(downloadService: downloadService),
+            engineFactory: fixture.factory,
+            modelDownloadExecutionCoordinator: FakeModelDownloadExecutionCoordinator(),
+            modelDownloadNotifier: FakeModelDownloadNotifier()
+        )
+        let localModel = LocalModel(url: fixture.modelURL, isBundled: false)
+        viewModel.localModels = [localModel]
+        await viewModel.selectModel(localModel)
+        let loadedEvents = fixture.factory.events
+
+        viewModel.confirmForegroundModelDownload(modelDownloadPlan())
+        try await waitUntil {
+            !viewModel.isModelDownloadActive && viewModel.phase == .missingModel
+        }
+        await viewModel.handleScenePhase(.active)
+
+        #expect(!viewModel.isEngineReady)
+        #expect(fixture.factory.events == loadedEvents)
+        #expect(fixture.factory.visionState.cancellationCount == 1)
     }
 
     @Test("Background-protected captioning continues when the scene backgrounds")
@@ -833,4 +909,101 @@ private final class FakePendingCaptionRunStore: PendingCaptionRunStoring {
     func clear() {
         run = nil
     }
+}
+
+private actor LifecycleModelDownloadService: ModelDownloadServicing {
+    enum Mode: Sendable {
+        case waitForCancellation
+        case complete(ModelDownloadOutcome)
+    }
+
+    let mode: Mode
+
+    init(mode: Mode) {
+        self.mode = mode
+    }
+
+    func preparePlan(
+        for model: DownloadableModel,
+        validatesWithoutKeepingFiles: Bool
+    ) -> ModelDownloadPlan {
+        modelDownloadPlan(validatesWithoutKeepingFiles: validatesWithoutKeepingFiles)
+    }
+
+    func execute(
+        _ plan: ModelDownloadPlan,
+        progressHandler: @escaping @Sendable (ModelDownloadProgress) async -> Void
+    ) async throws -> ModelDownloadOutcome {
+        if let descriptor = plan.files.first {
+            await progressHandler(
+                ModelDownloadProgress(
+                    requestedModel: plan.requestedModel,
+                    currentModel: descriptor.model,
+                    fileIndex: 1,
+                    fileCount: plan.files.count,
+                    completedBytes: 0,
+                    totalBytes: plan.totalBytes
+                )
+            )
+        }
+
+        switch mode {
+        case .waitForCancellation:
+            try await Task.sleep(for: .seconds(60))
+            throw CancellationError()
+        case .complete(let outcome):
+            return outcome
+        }
+    }
+
+    func isInstalled(_ model: DownloadableModel) -> Bool {
+        false
+    }
+
+    func cancelCurrentDownload() {}
+
+    func cleanStagingDirectory() {}
+}
+
+@MainActor
+private final class FakeModelDownloadExecutionCoordinator:
+    ModelDownloadExecutionCoordinating {
+    func submit(
+        transactionID: UUID,
+        totalBytes: Int64,
+        start: @escaping @MainActor () -> Void,
+        expiration: @escaping @MainActor () -> Void
+    ) -> ModelDownloadExecutionMode {
+        start()
+        return .backgroundProtected
+    }
+
+    func report(_ progress: ModelDownloadProgress) {}
+
+    func complete(success: Bool) {}
+}
+
+@MainActor
+private final class FakeModelDownloadNotifier: ModelDownloadNotifying {
+    func requestAuthorizationIfNeeded() async {}
+
+    func notifyCompletion(message: String) async -> Bool {
+        false
+    }
+}
+
+nonisolated private func modelDownloadPlan(
+    validatesWithoutKeepingFiles: Bool = false
+) -> ModelDownloadPlan {
+    ModelDownloadPlan(
+        requestedModel: .e2b,
+        files: [
+            ModelDownloadFile(
+                descriptor: DownloadableModel.e2b.descriptor,
+                byteCount: 3
+            )
+        ],
+        dependencyAlreadyInstalled: false,
+        validatesWithoutKeepingFiles: validatesWithoutKeepingFiles
+    )
 }

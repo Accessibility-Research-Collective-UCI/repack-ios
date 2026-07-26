@@ -1,8 +1,34 @@
 import Foundation
 
-struct LocalModel: Identifiable, Equatable {
+nonisolated enum ModelInstallationOrigin: String, Codable, Sendable {
+    case bundled
+    case approved
+    case imported
+}
+
+nonisolated struct ModelInstallationRecord: Codable, Equatable, Sendable {
+    let fileName: String
+    let origin: ModelInstallationOrigin
+    let model: DownloadableModel?
+    var explicitlyOwned: Bool
+    var requiredBy: Set<DownloadableModel>
+    var byteCount: Int64
+}
+
+nonisolated struct LocalModel: Identifiable, Equatable, Sendable {
     let url: URL
     let isBundled: Bool
+    let origin: ModelInstallationOrigin
+
+    init(
+        url: URL,
+        isBundled: Bool,
+        origin: ModelInstallationOrigin? = nil
+    ) {
+        self.url = url
+        self.isBundled = isBundled
+        self.origin = origin ?? (isBundled ? .bundled : .imported)
+    }
 
     nonisolated var id: String { url.path }
     nonisolated var displayName: String {
@@ -13,113 +39,63 @@ struct LocalModel: Identifiable, Equatable {
     }
 }
 
-enum DownloadableModel: String, CaseIterable, Identifiable {
-    case e2b
-    case e4b
+nonisolated struct ModelStorageItem: Identifiable, Equatable, Sendable {
+    let model: LocalModel
+    let record: ModelInstallationRecord
 
-    nonisolated var id: String { rawValue }
+    var id: String { model.id }
+    var displayName: String { model.displayName }
+    var byteCount: Int64 { record.byteCount }
 
-    nonisolated var displayName: String {
-        switch self {
-        case .e2b:
-            String(localized: "Gemma 4 E2B")
-        case .e4b:
-            String(localized: "Gemma 4 E4B")
+    var originDescription: String {
+        switch record.origin {
+        case .approved:
+            String(localized: "Downloaded from Hugging Face")
+        case .imported:
+            String(localized: "Imported")
+        case .bundled:
+            String(localized: "Bundled with this Debug build")
         }
     }
 
-    nonisolated var shortDescription: String {
-        switch self {
-        case .e2b:
-            String(localized: "Runs on your device. Fastest captions.")
-        case .e4b:
-            String(localized: "Runs on your device. Better captions, but slower. Gemma 4 E2B is also needed.")
-        }
-    }
-
-    nonisolated var executionLocation: ModelExecutionLocation {
-        .onDevice
-    }
-
-    nonisolated var approximateSize: String {
-        switch self {
-        case .e2b:
-            "2.58 GB"
-        case .e4b:
-            "3.66 GB"
-        }
-    }
-
-    nonisolated var repository: String {
-        switch self {
-        case .e2b:
-            "litert-community/gemma-4-E2B-it-litert-lm"
-        case .e4b:
-            "litert-community/gemma-4-E4B-it-litert-lm"
-        }
-    }
-
-    nonisolated var fileName: String {
-        switch self {
-        case .e2b:
-            "gemma-4-E2B-it.litertlm"
-        case .e4b:
-            "gemma-4-E4B-it.litertlm"
-        }
-    }
-
-    nonisolated var downloadURL: URL {
-        URL(string: "https://huggingface.co/\(repository)/resolve/main/\(fileName)")!
-    }
-
-    nonisolated init?(modelURL: URL) {
-        let identifier = modelURL.deletingPathExtension().lastPathComponent.lowercased()
-
-        if identifier.contains("e2b") {
-            self = .e2b
-        } else if identifier.contains("e4b") {
-            self = .e4b
-        } else {
-            return nil
-        }
-    }
-
-    nonisolated static func displayName(for modelURL: URL) -> String {
-        DownloadableModel(modelURL: modelURL)?.displayName
-            ?? String(localized: "Imported Model")
-    }
-
-    nonisolated static func shortDescription(for modelURL: URL) -> String {
-        DownloadableModel(modelURL: modelURL)?.shortDescription
-            ?? String(localized: "Runs on your device")
-    }
-
-    nonisolated static func executionLocation(for modelURL: URL) -> ModelExecutionLocation {
-        DownloadableModel(modelURL: modelURL)?.executionLocation ?? .onDevice
+    var dependencyDescription: String? {
+        guard record.requiredBy.contains(.e4b) else { return nil }
+        return String(localized: "Required by Gemma 4 E4B")
     }
 }
 
-nonisolated enum ModelExecutionLocation: Sendable {
-    case onDevice
+nonisolated struct ModelDeletionPlan: Equatable, Sendable {
+    let items: [ModelStorageItem]
 
-    var progressDescription: String {
-        switch self {
-        case .onDevice:
-            String(localized: "on device")
-        }
+    var ids: Set<String> { Set(items.map(\.id)) }
+    var recoveredBytes: Int64 { items.reduce(0) { $0 + $1.byteCount } }
+
+    var confirmationMessage: String {
+        let names = items.map(\.displayName).formatted(.list(type: .and))
+        let size = recoveredBytes.formatted(.byteCount(style: .file))
+        return String(
+            localized:
+                "Remove \(names)? This will recover approximately \(size)."
+        )
     }
 }
 
 struct ModelManager {
     private let storedModelPathKey = "GemmaModelPath"
     private let modelExtension = "litertlm"
-    private let bundledModelNames = [
-        "gemma-4-E2B-it",
-        "gemma-4-E4B-it"
-    ]
+    private let downloadService: any ModelDownloadServicing
+    private let installationStore: ModelInstallationStore
+
+    init(
+        downloadService: any ModelDownloadServicing = ModelDownloadService(),
+        installationDefaults: UserDefaults = .standard
+    ) {
+        self.downloadService = downloadService
+        installationStore = ModelInstallationStore(defaults: installationDefaults)
+    }
 
     func refreshLocalModels(currentModelURL: URL?) -> (models: [LocalModel], selectedModelURL: URL?) {
-        let models = localModels()
+        let models = installationStore.reconcile(localModels())
         var selectedModelURL = currentModelURL
 
         if selectedModelURL == nil {
@@ -136,77 +112,148 @@ struct ModelManager {
         UserDefaults.standard.set(url.path, forKey: storedModelPathKey)
     }
 
-    func importModel(from selectedURL: URL) async throws -> URL {
-        try await Self.copyModelIntoAppSupport(selectedURL)
+    func markExplicitOwnership(of model: LocalModel) {
+        guard model.origin == .approved,
+            let downloadable = DownloadableModel(modelURL: model.url)
+        else {
+            return
+        }
+        installationStore.markExplicit(downloadable)
+    }
+
+    func prepareDownloadPlan(for model: DownloadableModel) async throws -> ModelDownloadPlan {
+        #if DEBUG
+            let validatesWithoutKeepingFiles = true
+        #else
+            let validatesWithoutKeepingFiles = false
+        #endif
+
+        let plan = try await downloadService.preparePlan(
+            for: model,
+            validatesWithoutKeepingFiles: validatesWithoutKeepingFiles
+        )
+        #if !DEBUG
+        if plan.files.isEmpty {
+            installationStore.markExplicit(model)
+        }
+        #endif
+        return plan
     }
 
     func download(
-        model: DownloadableModel,
-        progressHandler: @escaping @Sendable (Double) async -> Void
-    ) async throws -> URL {
-        let destinationDirectory = try Self.modelsDirectory()
-        let destinationURL = destinationDirectory.appendingPathComponent(model.fileName)
-        let temporaryURL = destinationDirectory.appendingPathComponent("\(model.fileName).download")
+        plan: ModelDownloadPlan,
+        progressHandler: @escaping @Sendable (ModelDownloadProgress) async -> Void
+    ) async throws -> ModelDownloadOutcome {
+        let outcome = try await downloadService.execute(
+            plan,
+            progressHandler: progressHandler
+        )
+        if case .installed = outcome {
+            installationStore.recordDownload(plan)
+        }
+        return outcome
+    }
 
-        if FileManager.default.fileExists(atPath: temporaryURL.path) {
-            try FileManager.default.removeItem(at: temporaryURL)
+    func cancelDownload() async {
+        await downloadService.cancelCurrentDownload()
+    }
+
+    func storageItems(from models: [LocalModel]) -> [ModelStorageItem] {
+        let records = Dictionary(
+            uniqueKeysWithValues: installationStore.records().map {
+                ($0.fileName, $0)
+            }
+        )
+        return models.compactMap { model in
+            guard !model.isBundled,
+                let record = records[model.url.lastPathComponent]
+            else {
+                return nil
+            }
+            return ModelStorageItem(model: model, record: record)
+        }
+    }
+
+    nonisolated func deletionSelection(
+        toggling item: ModelStorageItem,
+        isSelected: Bool,
+        current: Set<String>,
+        items: [ModelStorageItem]
+    ) -> Set<String> {
+        var selection = current
+        let approvedE2B = items.first {
+            $0.record.origin == .approved && $0.record.model == .e2b
+        }
+        let approvedE4B = items.first {
+            $0.record.origin == .approved && $0.record.model == .e4b
         }
 
-        FileManager.default.createFile(atPath: temporaryURL.path, contents: nil)
-        let fileHandle = try FileHandle(forWritingTo: temporaryURL)
-        defer {
-            try? fileHandle.close()
-        }
-
-        var request = URLRequest(url: model.downloadURL)
-        request.timeoutInterval = 60
-
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, 200..<300 ~= httpResponse.statusCode else {
-            throw URLError(.badServerResponse)
-        }
-
-        let expectedLength = httpResponse.expectedContentLength
-        var receivedLength: Int64 = 0
-        var buffer = Data()
-        buffer.reserveCapacity(1024 * 1024)
-
-        for try await byte in bytes {
-            buffer.append(byte)
-            receivedLength += 1
-
-            if buffer.count >= 1024 * 1024 {
-                try fileHandle.write(contentsOf: buffer)
-                buffer.removeAll(keepingCapacity: true)
-
-                if expectedLength > 0 {
-                    await progressHandler(min(Double(receivedLength) / Double(expectedLength), 1))
-                }
+        if isSelected {
+            selection.insert(item.id)
+            if item.id == approvedE2B?.id, let approvedE4B {
+                selection.insert(approvedE4B.id)
+            } else if item.id == approvedE4B?.id,
+                let approvedE2B,
+                !approvedE2B.record.explicitlyOwned {
+                selection.insert(approvedE2B.id)
+            }
+        } else {
+            selection.remove(item.id)
+            if item.id == approvedE4B?.id, let approvedE2B {
+                selection.remove(approvedE2B.id)
             }
         }
+        return selection
+    }
 
-        if !buffer.isEmpty {
-            try fileHandle.write(contentsOf: buffer)
+    nonisolated func deletionPlan(
+        selection: Set<String>,
+        items: [ModelStorageItem]
+    ) -> ModelDeletionPlan {
+        var resolved = selection
+        if let approvedE2B = items.first(where: {
+            $0.record.origin == .approved && $0.record.model == .e2b
+        }), resolved.contains(approvedE2B.id),
+            let approvedE4B = items.first(where: {
+                $0.record.origin == .approved && $0.record.model == .e4b
+            }) {
+            resolved.insert(approvedE4B.id)
         }
+        return ModelDeletionPlan(
+            items: items.filter { resolved.contains($0.id) }
+        )
+    }
 
-        if FileManager.default.fileExists(atPath: destinationURL.path) {
-            try FileManager.default.removeItem(at: destinationURL)
+    func deleteModels(_ plan: ModelDeletionPlan) throws {
+        for item in plan.items {
+            try FileManager.default.removeItem(at: item.model.url)
+            let legacyMarker = item.model.url.deletingLastPathComponent()
+                .appending(path: ".\(item.model.url.lastPathComponent).verified.plist")
+            try? FileManager.default.removeItem(at: legacyMarker)
         }
+        installationStore.remove(plan.items.map(\.record))
+    }
 
-        try FileManager.default.moveItem(at: temporaryURL, to: destinationURL)
-        await progressHandler(1)
-        return destinationURL
+    func isDownloadInstalled(_ model: DownloadableModel) async -> Bool {
+        await downloadService.isInstalled(model)
+    }
+
+    func cleanDownloadStagingDirectory() async {
+        await downloadService.cleanStagingDirectory()
     }
 
     private func localModels() -> [LocalModel] {
-        var models = (Bundle.main.urls(forResourcesWithExtension: modelExtension, subdirectory: nil) ?? [])
-            .map { LocalModel(url: $0, isBundled: true) }
+        var models: [LocalModel] = []
 
-        models += bundledModelNames.compactMap { name in
-            Bundle.main.url(forResource: name, withExtension: modelExtension).map {
-                LocalModel(url: $0, isBundled: true)
-            }
-        }
+        #if DEBUG
+            models += (
+                Bundle.main.urls(
+                    forResourcesWithExtension: modelExtension,
+                    subdirectory: "DevelopmentModels"
+                ) ?? []
+            )
+            .map { LocalModel(url: $0, isBundled: true) }
+        #endif
 
         if let directory = try? Self.modelsDirectory() {
             let savedModels = (try? FileManager.default.contentsOfDirectory(
@@ -237,27 +284,6 @@ struct ModelManager {
             return nil
         }
         return URL(fileURLWithPath: path)
-    }
-
-    private static func copyModelIntoAppSupport(_ sourceURL: URL) async throws -> URL {
-        try await Task.detached(priority: .userInitiated) {
-            let didAccess = sourceURL.startAccessingSecurityScopedResource()
-            defer {
-                if didAccess {
-                    sourceURL.stopAccessingSecurityScopedResource()
-                }
-            }
-
-            let destinationDirectory = try modelsDirectory()
-            let destinationURL = destinationDirectory.appendingPathComponent(sourceURL.lastPathComponent)
-
-            if FileManager.default.fileExists(atPath: destinationURL.path) {
-                try FileManager.default.removeItem(at: destinationURL)
-            }
-
-            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-            return destinationURL
-        }.value
     }
 
     nonisolated static func sameFile(_ lhs: URL?, _ rhs: URL?) -> Bool {
@@ -300,5 +326,154 @@ struct ModelManager {
         let directory = try applicationSupportDirectory().appendingPathComponent("Models", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+}
+
+private struct ModelInstallationStore {
+    private let key = "ModelInstallationRecords"
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults) {
+        self.defaults = defaults
+    }
+
+    func records() -> [ModelInstallationRecord] {
+        guard let data = defaults.data(forKey: key),
+            let records = try? PropertyListDecoder().decode(
+                [ModelInstallationRecord].self,
+                from: data
+            )
+        else {
+            return []
+        }
+        return records
+    }
+
+    func reconcile(_ models: [LocalModel]) -> [LocalModel] {
+        let savedModels = models.filter { !$0.isBundled }
+        let existingNames = Set(savedModels.map { $0.url.lastPathComponent })
+        var records = records().filter { existingNames.contains($0.fileName) }
+
+        for model in savedModels {
+            let fileName = model.url.lastPathComponent
+            let byteCount = Int64(
+                (try? model.url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            )
+            if let index = records.firstIndex(where: { $0.fileName == fileName }) {
+                records[index].byteCount = byteCount
+            } else {
+                let approvedModel = DownloadableModel.allCases.first {
+                    $0.fileName == fileName
+                }
+                records.append(
+                    ModelInstallationRecord(
+                        fileName: fileName,
+                        origin: approvedModel == nil ? .imported : .approved,
+                        model: approvedModel,
+                        explicitlyOwned: true,
+                        requiredBy: [],
+                        byteCount: byteCount
+                    )
+                )
+            }
+        }
+
+        for index in records.indices {
+            records[index].requiredBy.removeAll()
+        }
+        if let e2BIndex = records.firstIndex(where: {
+            $0.origin == .approved && $0.model == .e2b
+        }), records.contains(where: {
+            $0.origin == .approved && $0.model == .e4b
+        }) {
+            records[e2BIndex].requiredBy.insert(.e4b)
+        }
+        save(records)
+
+        let recordsByName = Dictionary(
+            uniqueKeysWithValues: records.map { ($0.fileName, $0) }
+        )
+        return models.map { model in
+            guard !model.isBundled,
+                let record = recordsByName[model.url.lastPathComponent]
+            else {
+                return model
+            }
+            return LocalModel(
+                url: model.url,
+                isBundled: false,
+                origin: record.origin
+            )
+        }
+    }
+
+    func recordDownload(_ plan: ModelDownloadPlan) {
+        var records = records()
+        for file in plan.files {
+            let descriptor = file.descriptor
+            let index = records.firstIndex {
+                $0.fileName == descriptor.fileName
+            }
+            let explicitlyOwned = descriptor.model == plan.requestedModel
+                || (index.map { records[$0].explicitlyOwned } ?? false)
+            let record = ModelInstallationRecord(
+                fileName: descriptor.fileName,
+                origin: .approved,
+                model: descriptor.model,
+                explicitlyOwned: explicitlyOwned,
+                requiredBy: descriptor.model == .e2b && plan.requestedModel == .e4b
+                    ? [.e4b]
+                    : [],
+                byteCount: file.byteCount
+            )
+            if let index {
+                records[index] = record
+            } else {
+                records.append(record)
+            }
+        }
+
+        if plan.requestedModel == .e4b,
+            let e2BIndex = records.firstIndex(where: {
+                $0.origin == .approved && $0.model == .e2b
+            }) {
+            records[e2BIndex].requiredBy.insert(.e4b)
+        }
+        save(records)
+    }
+
+    func markExplicit(_ model: DownloadableModel) {
+        var records = records()
+        guard let index = records.firstIndex(where: {
+            $0.origin == .approved && $0.model == model
+        }) else {
+            return
+        }
+        records[index].explicitlyOwned = true
+        save(records)
+    }
+
+    func remove(_ removed: [ModelInstallationRecord]) {
+        let removedNames = Set(removed.map(\.fileName))
+        let removedE4B = removed.contains {
+            $0.origin == .approved && $0.model == .e4b
+        }
+        let removedE2B = removed.contains {
+            $0.origin == .approved && $0.model == .e2b
+        }
+        var records = records().filter { !removedNames.contains($0.fileName) }
+        if removedE4B, !removedE2B,
+            let e2BIndex = records.firstIndex(where: {
+                $0.origin == .approved && $0.model == .e2b
+            }) {
+            records[e2BIndex].requiredBy.remove(.e4b)
+            records[e2BIndex].explicitlyOwned = true
+        }
+        save(records)
+    }
+
+    private func save(_ records: [ModelInstallationRecord]) {
+        guard let data = try? PropertyListEncoder().encode(records) else { return }
+        defaults.set(data, forKey: key)
     }
 }

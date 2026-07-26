@@ -144,7 +144,7 @@ struct REPACKDetailsView: View {
                 Spacer()
                 if let value {
                     Text(value)
-                        .font(.subheadline.monospacedDigit())
+                        .font(.headline.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
