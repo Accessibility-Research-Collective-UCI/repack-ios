@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		2217BE96301449ED00ECC1F0 /* LiteRTLM in Frameworks */ = {isa = PBXBuildFile; productRef = 2217BE95301449ED00ECC1F0 /* LiteRTLM */; };
+		2257C31C3016A28500D83558 /* LiteRTLM in Frameworks */ = {isa = PBXBuildFile; productRef = 2257C31B3016A28500D83558 /* LiteRTLM */; };
+		2257C31F3016ACAF00D83558 /* LiteRTLM in Frameworks */ = {isa = PBXBuildFile; productRef = 2257C31E3016ACAF00D83558 /* LiteRTLM */; };
+		2257C3223016AD3F00D83558 /* LiteRTLM in Frameworks */ = {isa = PBXBuildFile; productRef = 2257C3213016AD3F00D83558 /* LiteRTLM */; };
 		C0DE00000000000000000003 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE00000000000000000002 /* HuggingFace */; };
 /* End PBXBuildFile section */
 
@@ -57,7 +60,10 @@
 			isa = PBXFrameworksBuildPhase;
 			files = (
 				2217BE96301449ED00ECC1F0 /* LiteRTLM in Frameworks */,
+				2257C3223016AD3F00D83558 /* LiteRTLM in Frameworks */,
+				2257C31F3016ACAF00D83558 /* LiteRTLM in Frameworks */,
 				C0DE00000000000000000003 /* HuggingFace in Frameworks */,
+				2257C31C3016A28500D83558 /* LiteRTLM in Frameworks */,
 			);
 		};
 		B1E000000000000000000003 /* Frameworks */ = {
@@ -107,6 +113,9 @@
 			packageProductDependencies = (
 				2217BE95301449ED00ECC1F0 /* LiteRTLM */,
 				C0DE00000000000000000002 /* HuggingFace */,
+				2257C31B3016A28500D83558 /* LiteRTLM */,
+				2257C31E3016ACAF00D83558 /* LiteRTLM */,
+				2257C3213016AD3F00D83558 /* LiteRTLM */,
 			);
 			productName = tester;
 			productReference = 22171F7B3013F12100756490 /* REPACK Cap.app */;
@@ -162,8 +171,8 @@
 			mainGroup = 22171F723013F12100756490;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				2217BE94301449ED00ECC1F0 /* XCLocalSwiftPackageReference "../LiteRT-LM" */,
 				C0DE00000000000000000001 /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				2257C3203016AD3F00D83558 /* XCLocalSwiftPackageReference "../LiteRT-LM-Custom" */,
 			);
 			preferredProjectObjectVersion = 100;
 			productRefGroup = 22171F7C3013F12100756490 /* Products */;
@@ -552,9 +561,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		2217BE94301449ED00ECC1F0 /* XCLocalSwiftPackageReference "../LiteRT-LM" */ = {
+		2257C3203016AD3F00D83558 /* XCLocalSwiftPackageReference "../LiteRT-LM-Custom" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = "../LiteRT-LM";
+			relativePath = "../LiteRT-LM-Custom";
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -574,6 +583,18 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		2217BE95301449ED00ECC1F0 /* LiteRTLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = LiteRTLM;
+		};
+		2257C31B3016A28500D83558 /* LiteRTLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = LiteRTLM;
+		};
+		2257C31E3016ACAF00D83558 /* LiteRTLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = LiteRTLM;
+		};
+		2257C3213016AD3F00D83558 /* LiteRTLM */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = LiteRTLM;
 		};
