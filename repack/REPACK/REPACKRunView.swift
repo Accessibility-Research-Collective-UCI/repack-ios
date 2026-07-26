@@ -89,6 +89,18 @@ struct REPACKRunView: View {
     }
 
     private var navigationTitle: LocalizedStringKey {
+        #if DEBUG
+        switch model.phase {
+        case .output:
+            "DEBUG Results"
+        case .interrupted:
+            "DEBUG Interrupted"
+        case .failed:
+            "DEBUG Stopped"
+        default:
+            "DEBUG Processing"
+        }
+        #else
         switch model.phase {
         case .output:
             "Results"
@@ -99,6 +111,7 @@ struct REPACKRunView: View {
         default:
             "Processing"
         }
+        #endif
     }
 
     private func interruptedView(message: String) -> some View {
