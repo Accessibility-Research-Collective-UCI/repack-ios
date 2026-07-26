@@ -38,7 +38,7 @@ final class LiteRTREPACKEngineFactory: REPACKEngineFactory {
         let configuration = try EngineConfig(
             modelPath: modelURL.path,
             backend: .gpu,
-            visionBackend: .cpu(),
+            visionBackend: .gpu,
             maxNumTokens: 4_096,
             cacheDir: NSTemporaryDirectory()
         )
