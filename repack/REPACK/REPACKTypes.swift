@@ -234,6 +234,64 @@ nonisolated enum REPACKPrompts {
     * The person is holding the sneakers.
     """
 
+    static let atomizeListPrompt = """
+    You are given a natural-language image description from a vision-language model. Decompose it into independent atomic facts that capture visual details explicitly stated in the caption.
+
+    Instructions:
+    1. Extract distinct elements (objects, relations, attributes, etc.).
+    2. Generate one simple, factual, unambiguous statement per atomic fact.
+
+    Guidelines:
+    - Each fact expresses only one visual detail.
+    - Avoid subjective words ("beautiful", "fancy"), inferred emotions, or multi-clause sentences.
+    - Use short, declarative sentences (e.g., "There is a dog.", "A person wears a jacket.").
+    - Exclude speculative, temporal, or non-visual details.
+    - Do not add information that is not present in the caption.
+
+    Output Format:
+    Return only one valid JSON array of strings containing the complete list. Do not call a tool. Do not use Markdown fences, an object wrapper, or explanatory text. Use JSON double quotation marks only to delimit array strings. When quoting label text within a string, use single quotation marks.
+
+    Example 1
+    Input: A man posing for a selfie in a jacket and bow tie.
+    Output: ["There is a man.", "There is a jacket.", "There is a bow tie.", "A man is wearing a jacket.", "A man is wearing a bow tie.", "A man is posing for a selfie."]
+
+    Example 2
+    Input: The image features a red velvet couch with a cat lying on it.
+    Output:["There is a couch.", "There is a cat.", "The cat is lying on a couch.", "The couch is red.", "The couch is velvet."]
+
+    Example 3
+    Input: The photo is a close-up of a giraffe's head.
+    Output:["There is a giraffe.", "There is a head.", "The head belongs to a giraffe."]
+
+    Example 4
+    Input: A horse and several cows feed on hay.
+    Output: ["There is a horse.", "There are several cows.", "There is hay.", "A horse is feeding on hay.", "Cows are feeding on hay."]
+
+    Example 5
+    Input: A red colored dog.
+    Output: ["There is a dog.", "The dog is red."]
+
+    Example 6
+    Input: Motorcyclists are parked outside a busy community center.
+    Output: ["There are motorcyclists.", "There is a community center.", "Motorcycles are parked outside the community center.", "The community center is busy."]
+
+    Example 7
+    Input: A can of Campbell's Tomato Soup with a red and white label and gold seal.
+    Output: ["There is a can.", "The can is Campbell's brand.", "The can contains tomato soup.", "The can has a label.", "The label is red and white.", "There is a seal on the can.", "The seal is gold."]
+
+    Example 8
+    Input: A bottle of shampoo on a bathroom counter next to a folded towel.
+    Output: ["There is a bottle.", "The bottle contains shampoo.", "There is a counter.", "The counter is in a bathroom.", "The bottle is on the counter.", "There is a towel.", "The towel is folded.", "The towel is next to the bottle."]
+
+    Example 9
+    Input: A bottle of soda with a blue label.
+    Output: ["There is a bottle.", "The bottle contains soda.", "The bottle has a label.", "The label is blue."]
+
+    Example 10
+    Input: A red and white Kellogg's cereal box. The label includes 32 oz and "GOOD SOURCE OF WHOLE GRAINS".
+    Output: ["There is a box.", "The box is Kellogg's brand.", "The box is red and white.", "The label includes the text '32 oz'.", "The label includes the text 'GOOD SOURCE OF WHOLE GRAINS'."]
+    """
+
     static let repackagePrompt = """
     You will be given a list of atomic statements that describe an image. Combine them into a single caption. Do not include any additional information. Output only the final caption.
 

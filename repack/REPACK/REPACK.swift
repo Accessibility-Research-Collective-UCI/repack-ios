@@ -74,8 +74,10 @@ final class REPACK {
         REPACKMemoryDiagnostics.log("Sampling engine ready")
 
         if ModelManager.sameFile(samplingModelURL, processingModelURL) {
-            processingEngine = samplingEngine
-            debugLog("Sampling and processing share the E2B vision engine.")
+            processingEngine = try await engineFactory.makeTextEngine(
+                modelURL: processingModelURL
+            )
+            debugLog("Sampling and processing use separate E2B vision and MTP text engines.")
         } else {
             try engineFactory.validateModel(at: processingModelURL)
             let shouldKeepBothEnginesResident: Bool
@@ -394,9 +396,6 @@ private extension REPACK {
 
         emit(.preparingVisionModel)
         samplingEngine = try await engineFactory.makeVisionEngine(modelURL: samplingModelURL)
-        if ModelManager.sameFile(samplingModelURL, processingModelURL) {
-            processingEngine = samplingEngine
-        }
         REPACKMemoryDiagnostics.log("Sampling engine restored")
     }
 
@@ -409,13 +408,8 @@ private extension REPACK {
             REPACKMemoryDiagnostics.log("E4B sampling engine released before E2B processing")
         }
 
-        if ModelManager.sameFile(samplingModelURL, processingModelURL) {
-            try await prepareSamplingEngineIfNeeded()
-            processingEngine = samplingEngine
-        } else {
-            emit(.preparingTextModel)
-            processingEngine = try await engineFactory.makeTextEngine(modelURL: processingModelURL)
-        }
+        emit(.preparingTextModel)
+        processingEngine = try await engineFactory.makeTextEngine(modelURL: processingModelURL)
         REPACKMemoryDiagnostics.log("Processing engine restored")
     }
 

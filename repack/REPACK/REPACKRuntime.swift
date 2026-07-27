@@ -50,7 +50,7 @@ final class LiteRTREPACKEngineFactory: REPACKEngineFactory {
 
     func makeTextEngine(modelURL: URL) async throws -> any REPACKInferenceEngine {
         ExperimentalFlags.optIntoExperimentalAPIs()
-        ExperimentalFlags.enableSpeculativeDecoding = false
+        ExperimentalFlags.enableSpeculativeDecoding = true
         let modelName = modelURL.deletingPathExtension().lastPathComponent
         REPACKMemoryDiagnostics.log("Before creating text engine: \(modelName)")
 
@@ -102,20 +102,51 @@ final class LiteRTREPACKInferenceEngine: REPACKInferenceEngine {
         guard !trimmedCaption.isEmpty else { return [] }
 
         return try await AtomizationRetryPolicy.run { attempt in
-            try await self.atomize(trimmedCaption, isRetry: attempt > 0)
+            try await self.atomizeUsingList(trimmedCaption, isRetry: attempt > 0)
         } onRetry: { attempt, error in
             #if DEBUG
             print(
-                "[REPACK] Retrying atomization after tool-call failure "
+                "[REPACK] Retrying atomization after list parsing failure "
                     + "(attempt \(attempt + 1)/\(AtomizationRetryPolicy.maximumAttempts)): "
                     + error.localizedDescription
             )
             #endif
-            REPACKMemoryDiagnostics.log("Atomization tool-call retry")
+            REPACKMemoryDiagnostics.log("Atomization list parsing retry")
         }
     }
 
-    private func atomize(_ caption: String, isRetry: Bool) async throws -> [String] {
+    private func atomizeUsingList(_ caption: String, isRetry: Bool) async throws -> [String] {
+        ExperimentalFlags.enableConversationConstrainedDecoding = false
+        let sampler = try SamplerConfig(topK: 1, topP: 1, temperature: 0)
+        let configuration = ConversationConfig(
+            systemMessage: Message(REPACKPrompts.atomizeListPrompt, role: .system),
+            samplerConfig: sampler
+        )
+        let conversation = try await engine.createConversation(with: configuration)
+        let retryGuidance = isRetry
+            ? """
+
+            Your previous response could not be parsed. Return only a valid JSON array of strings. \
+            Do not use Markdown fences, an object wrapper, or any explanatory text.
+            """
+            : ""
+        let input = """
+            Caption to atomize:
+            <caption>
+            \(caption)
+            </caption>
+            \(retryGuidance)
+            """
+        let response = try await send(Message(input), through: conversation).toString
+
+        #if DEBUG
+        print("[REPACK] Atomization list response: \(response)")
+        #endif
+        return try AtomizationListParser.parse(response)
+    }
+
+    // Retained for a manual rollback. The active atomization path intentionally does not call it.
+    private func atomizeUsingToolCall(_ caption: String, isRetry: Bool) async throws -> [String] {
         let sampler = try SamplerConfig(topK: 1, topP: 1, temperature: 0)
         let configuration = ConversationConfig(
             systemMessage: Message(REPACKPrompts.atomizePrompt, role: .system),
@@ -203,8 +234,48 @@ final class LiteRTREPACKInferenceEngine: REPACKInferenceEngine {
     }
 }
 
+nonisolated enum AtomizationListParser {
+    static func parse(_ response: String) throws -> [String] {
+        let candidate = jsonCandidate(from: response)
+
+        let statements: [String]
+        do {
+            statements = try JSONDecoder().decode([String].self, from: Data(candidate.utf8))
+        } catch {
+            throw StructuredAtomizationError.invalidListResponse
+        }
+
+        var seen = Set<String>()
+        let normalized: [String] = statements.compactMap { statement -> String? in
+            let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, seen.insert(trimmed).inserted else {
+                return nil
+            }
+            return trimmed
+        }
+        guard !normalized.isEmpty else {
+            throw StructuredAtomizationError.invalidListResponse
+        }
+        return normalized
+    }
+
+    private static func jsonCandidate(from response: String) -> String {
+        let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("```"),
+              trimmed.hasSuffix("```"),
+              let firstLineEnd = trimmed.firstIndex(of: "\n") else {
+            return trimmed
+        }
+
+        let contentStart = trimmed.index(after: firstLineEnd)
+        let contentEnd = trimmed.index(trimmed.endIndex, offsetBy: -3)
+        return String(trimmed[contentStart..<contentEnd])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 nonisolated enum AtomizationRetryPolicy {
-    static let maximumAttempts = 2
+    static let maximumAttempts = 5
 
     @MainActor
     static func run<T>(
@@ -228,7 +299,9 @@ nonisolated enum AtomizationRetryPolicy {
 
     static func shouldRetry(_ error: any Error) -> Bool {
         if let structuredError = error as? StructuredAtomizationError {
-            return structuredError == .noToolCall || structuredError == .multipleToolCalls
+            return structuredError == .invalidListResponse
+                || structuredError == .noToolCall
+                || structuredError == .multipleToolCalls
         }
 
         guard let liteRTError = error as? LiteRTLMError,
@@ -253,6 +326,7 @@ nonisolated enum AtomizationRetryPolicy {
 }
 
 nonisolated enum StructuredAtomizationError: Error, Equatable, LocalizedError, Sendable {
+    case invalidListResponse
     case noToolCall
     case multipleToolCalls
     case missingCaptureContext
@@ -260,6 +334,8 @@ nonisolated enum StructuredAtomizationError: Error, Equatable, LocalizedError, S
 
     var errorDescription: String? {
         switch self {
+        case .invalidListResponse:
+            String(localized: "The model did not submit structured atomic statements.")
         case .noToolCall:
             String(localized: "The model did not submit structured atomic statements.")
         case .multipleToolCalls:
