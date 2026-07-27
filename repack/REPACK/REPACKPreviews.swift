@@ -139,6 +139,20 @@ import SwiftUI
     .environment(\.dynamicTypeSize, .accessibility3)
 }
 
+#Preview("Processing · Dimmed") {
+    ZStack {
+        NavigationStack {
+            REPACKRunView(
+                model: .previewProcessing(.sampling(completed: 2, total: 6)),
+                restartAction: {},
+                resetAction: {}
+            )
+        }
+
+        CaptioningDimOverlay(brightenAction: {})
+    }
+}
+
 #Preview("Output") {
     NavigationStack {
         REPACKRunView(model: .previewOutput, restartAction: {}, resetAction: {})

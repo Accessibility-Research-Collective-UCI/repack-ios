@@ -128,6 +128,9 @@
     "Breaking down captions" : {
 
     },
+    "Brightens the screen." : {
+
+    },
     "Bundled with this Debug build" : {
 
     },
@@ -168,6 +171,12 @@
 
     },
     "Caption updated." : {
+
+    },
+    "Captioning continues" : {
+
+    },
+    "Captioning continues. Screen dimmed." : {
 
     },
     "Captioning did not finish. Restart Captioning to begin again from the start." : {
@@ -633,6 +642,9 @@
 
     },
     "Tap Selected Model to choose and load a model." : {
+
+    },
+    "Tap to brighten" : {
 
     },
     "The atomic statements could not be prepared for repackaging." : {
