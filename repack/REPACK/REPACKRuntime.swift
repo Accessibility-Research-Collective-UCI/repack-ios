@@ -4,7 +4,7 @@ import Foundation
 @MainActor
 protocol REPACKInferenceEngine: AnyObject {
     func generateCaption(image: URL, prompt: String, seed: Int) async throws -> String
-    func atomize(caption: String) async throws -> [String]
+    func atomize(caption: String) async throws -> REPACKAtomizationResult
     func repackage(atomics: [String]) async throws -> String
     func cancel() async
 }
@@ -97,25 +97,20 @@ final class LiteRTREPACKInferenceEngine: REPACKInferenceEngine {
         return try await send(message, through: conversation).toString
     }
 
-    func atomize(caption: String) async throws -> [String] {
+    func atomize(caption: String) async throws -> REPACKAtomizationResult {
         let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedCaption.isEmpty else { return [] }
+        guard !trimmedCaption.isEmpty else {
+            return REPACKAtomizationResult(statements: [], status: .unparseable)
+        }
 
-        return try await AtomizationRetryPolicy.run { attempt in
-            try await self.atomizeUsingList(trimmedCaption, isRetry: attempt > 0)
-        } onRetry: { attempt, error in
-            #if DEBUG
-            print(
-                "[REPACK] Retrying atomization after list parsing failure "
-                    + "(attempt \(attempt + 1)/\(AtomizationRetryPolicy.maximumAttempts)): "
-                    + error.localizedDescription
-            )
-            #endif
-            REPACKMemoryDiagnostics.log("Atomization list parsing retry")
+        let response = try await generateAtomizationList(for: trimmedCaption)
+        return try await AtomizationRecovery.resolve(response) {
+            // if we can't programatically repair, prompt LLM to try
+            try await self.repairAtomizationList(response)
         }
     }
 
-    private func atomizeUsingList(_ caption: String, isRetry: Bool) async throws -> [String] {
+    private func generateAtomizationList(for caption: String) async throws -> String {
         ExperimentalFlags.enableConversationConstrainedDecoding = false
         let sampler = try SamplerConfig(topK: 1, topP: 1, temperature: 0)
         let configuration = ConversationConfig(
@@ -123,26 +118,40 @@ final class LiteRTREPACKInferenceEngine: REPACKInferenceEngine {
             samplerConfig: sampler
         )
         let conversation = try await engine.createConversation(with: configuration)
-        let retryGuidance = isRetry
-            ? """
-
-            Your previous response could not be parsed. Return only a valid JSON array of strings. \
-            Do not use Markdown fences, an object wrapper, or any explanatory text.
-            """
-            : ""
         let input = """
             Caption to atomize:
             <caption>
             \(caption)
             </caption>
-            \(retryGuidance)
             """
         let response = try await send(Message(input), through: conversation).toString
 
         #if DEBUG
         print("[REPACK] Atomization list response: \(response)")
         #endif
-        return try AtomizationListParser.parse(response)
+        return response
+    }
+
+    private func repairAtomizationList(_ response: String) async throws -> String {
+        ExperimentalFlags.enableConversationConstrainedDecoding = false
+        let sampler = try SamplerConfig(topK: 1, topP: 1, temperature: 0)
+        let configuration = ConversationConfig(
+            systemMessage: Message(REPACKPrompts.atomizeListRepairPrompt, role: .system),
+            samplerConfig: sampler
+        )
+        let conversation = try await engine.createConversation(with: configuration)
+        let input = """
+            Text to repair:
+            <json>
+            \(response)
+            </json>
+            """
+        let repairedResponse = try await send(Message(input), through: conversation).toString
+
+        #if DEBUG
+        print("[REPACK] Atomization repair response: \(repairedResponse)")
+        #endif
+        return repairedResponse
     }
 
     // Retained for a manual rollback. The active atomization path intentionally does not call it.
@@ -236,15 +245,64 @@ final class LiteRTREPACKInferenceEngine: REPACKInferenceEngine {
 
 nonisolated enum AtomizationListParser {
     static func parse(_ response: String) throws -> [String] {
-        let candidate = jsonCandidate(from: response)
-
-        let statements: [String]
-        do {
-            statements = try JSONDecoder().decode([String].self, from: Data(candidate.utf8))
-        } catch {
-            throw StructuredAtomizationError.invalidListResponse
+        let rawResponse = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let statements = decodeStrict(rawResponse),
+           let normalized = normalize(statements) {
+            return normalized
         }
 
+        // if we can't parse JSON list fully, try to parse it string-by-string
+        let candidates = jsonCandidates(from: response)
+        for candidate in candidates {
+            guard candidate != rawResponse else { continue }
+
+            if let statements = decodeStrict(candidate),
+               let normalized = normalize(statements) {
+                return normalized
+            }
+        }
+
+        for candidate in candidates {
+            if let statements = decodeJSON5(candidate),
+               let normalized = normalize(statements) {
+                return normalized
+            }
+        }
+
+        // parsing fails, attempt repair
+        for candidate in candidates {
+            guard let repaired = structurallyRepair(candidate) else { continue }
+
+            if let statements = decodeStrict(repaired),
+               let normalized = normalize(statements) {
+                return normalized
+            }
+            if let statements = decodeJSON5(repaired),
+               let normalized = normalize(statements) {
+                return normalized
+            }
+        }
+
+        throw StructuredAtomizationError.invalidListResponse
+    }
+
+    private static func decodeStrict(_ candidate: String) -> [String]? {
+        try? JSONDecoder().decode([String].self, from: Data(candidate.utf8))
+    }
+
+    private static func decodeJSON5(_ candidate: String) -> [String]? {
+        guard let object = try? JSONSerialization.jsonObject(
+            with: Data(candidate.utf8),
+            options: [.json5Allowed]
+        ),
+        JSONSerialization.isValidJSONObject(object),
+        let strictData = try? JSONSerialization.data(withJSONObject: object) else {
+            return nil
+        }
+        return try? JSONDecoder().decode([String].self, from: strictData)
+    }
+
+    private static func normalize(_ statements: [String]) -> [String]? {
         var seen = Set<String>()
         let normalized: [String] = statements.compactMap { statement -> String? in
             let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -253,27 +311,184 @@ nonisolated enum AtomizationListParser {
             }
             return trimmed
         }
-        guard !normalized.isEmpty else {
-            throw StructuredAtomizationError.invalidListResponse
-        }
-        return normalized
+        return normalized.isEmpty ? nil : normalized
     }
 
-    private static func jsonCandidate(from response: String) -> String {
+    private static func jsonCandidates(from response: String) -> [String] {
         let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("```"),
-              trimmed.hasSuffix("```"),
-              let firstLineEnd = trimmed.firstIndex(of: "\n") else {
-            return trimmed
+        guard !trimmed.isEmpty else { return [] }
+
+        var candidates = [trimmed]
+        let characters = Array(trimmed)
+        for index in characters.indices where characters[index] == "[" {
+            candidates.append(arrayCandidate(startingAt: index, in: characters))
         }
 
-        let contentStart = trimmed.index(after: firstLineEnd)
-        let contentEnd = trimmed.index(trimmed.endIndex, offsetBy: -3)
-        return String(trimmed[contentStart..<contentEnd])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var seen = Set<String>()
+        return candidates.filter { seen.insert($0).inserted }
+    }
+
+    private static func arrayCandidate(
+        startingAt startIndex: Int,
+        in characters: [Character]
+    ) -> String {
+        var depth = 0
+        var stringDelimiter: Character?
+        var isEscaped = false
+
+        for index in startIndex..<characters.count {
+            let character = characters[index]
+
+            if let delimiter = stringDelimiter {
+                if isEscaped {
+                    isEscaped = false
+                } else if character == "\\" {
+                    isEscaped = true
+                } else if character == delimiter {
+                    stringDelimiter = nil
+                }
+                continue
+            }
+
+            switch character {
+            case "\"", "'":
+                stringDelimiter = character
+            case "[":
+                depth += 1
+            case "]":
+                depth -= 1
+                if depth == 0 {
+                    return String(characters[startIndex...index])
+                }
+            default:
+                break
+            }
+        }
+
+        return String(characters[startIndex...])
+    }
+
+    private static func structurallyRepair(_ input: String) -> String? {
+        var repaired = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        var stack: [Character] = []
+        var stringDelimiter: Character?
+        var isEscaped = false
+
+        for character in repaired {
+            if let delimiter = stringDelimiter {
+                if isEscaped {
+                    isEscaped = false
+                } else if character == "\\" {
+                    isEscaped = true
+                } else if character == delimiter {
+                    stringDelimiter = nil
+                }
+                continue
+            }
+
+            switch character {
+            case "\"", "'":
+                stringDelimiter = character
+            case "[", "{":
+                stack.append(character)
+            case "]":
+                guard stack.last == "[" else { return nil }
+                stack.removeLast()
+            case "}":
+                guard stack.last == "{" else { return nil }
+                stack.removeLast()
+            default:
+                break
+            }
+        }
+
+        if let stringDelimiter {
+            if isEscaped {
+                repaired.append("\\")
+            }
+            repaired.append(stringDelimiter)
+        }
+
+        for opener in stack.reversed() {
+            repaired.append(opener == "[" ? "]" : "}")
+        }
+        return removingTrailingCommas(from: repaired)
+    }
+
+    private static func removingTrailingCommas(from input: String) -> String {
+        let characters = Array(input)
+        var output: [Character] = []
+        var stringDelimiter: Character?
+        var isEscaped = false
+
+        for index in characters.indices {
+            let character = characters[index]
+
+            if let delimiter = stringDelimiter {
+                output.append(character)
+                if isEscaped {
+                    isEscaped = false
+                } else if character == "\\" {
+                    isEscaped = true
+                } else if character == delimiter {
+                    stringDelimiter = nil
+                }
+                continue
+            }
+
+            if character == "\"" || character == "'" {
+                stringDelimiter = character
+                output.append(character)
+                continue
+            }
+
+            if character == "," {
+                var nextIndex = index + 1
+                while nextIndex < characters.count, characters[nextIndex].isWhitespace {
+                    nextIndex += 1
+                }
+                if nextIndex < characters.count,
+                   characters[nextIndex] == "]" || characters[nextIndex] == "}" {
+                    continue
+                }
+            }
+
+            output.append(character)
+        }
+
+        return String(output)
     }
 }
 
+nonisolated enum AtomizationRecovery {
+    @MainActor
+    static func resolve(
+        _ response: String,
+        repair: @MainActor () async throws -> String
+    ) async throws -> REPACKAtomizationResult {
+        if let statements = try? AtomizationListParser.parse(response) {
+            return REPACKAtomizationResult(statements: statements, status: .parsed)
+        }
+
+        // Greedy MTP generation is deterministic, so repeating the original prompt with the same
+        // model state is unlikely to improve malformed JSON. Give the model one syntax-only repair.
+        do {
+            let repairedResponse = try await repair()
+            let statements = try AtomizationListParser.parse(repairedResponse)
+            return REPACKAtomizationResult(statements: statements, status: .parsed)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Cancellation is user intent and must escape. Other repair failures affect only this
+            // caption, so an explicit empty result lets verification continue with a visible warning.
+            try Task.checkCancellation()
+            REPACKMemoryDiagnostics.log("Atomization JSON repair failed")
+            return REPACKAtomizationResult(statements: [], status: .unparseable)
+        }
+    }
+}
+
+// Retained with the inactive tool-calling implementation for manual rollback.
 nonisolated enum AtomizationRetryPolicy {
     static let maximumAttempts = 5
 

@@ -245,6 +245,7 @@ nonisolated enum REPACKPrompts {
     - Each fact expresses only one visual detail.
     - Avoid subjective words ("beautiful", "fancy"), inferred emotions, or multi-clause sentences.
     - Use short, declarative sentences (e.g., "There is a dog.", "A person wears a jacket.").
+    - Do not use parentheses, brackets, or optional wording. Write complete declarative sentences.
     - Exclude speculative, temporal, or non-visual details.
     - Do not add information that is not present in the caption.
 
@@ -290,6 +291,33 @@ nonisolated enum REPACKPrompts {
     Example 10
     Input: A red and white Kellogg's cereal box. The label includes 32 oz and "GOOD SOURCE OF WHOLE GRAINS".
     Output: ["There is a box.", "The box is Kellogg's brand.", "The box is red and white.", "The label includes the text '32 oz'.", "The label includes the text 'GOOD SOURCE OF WHOLE GRAINS'."]
+
+    Example 11
+    Input: A box with the text "O'Bell's" on its label.
+    Output: ["There is a box.", "The box has a label.", "The label includes the text O'Bell's."]
+
+    Example 12
+    Input: A bottle labeled "50% OFF" next to two blue towels.
+    Output: ["There is a bottle.", "The bottle has a label.", "The label includes the text '50% OFF'.", "There are two towels.", "The towels are blue.", "The towels are next to the bottle."]
+
+    Example 13
+    Input: A black dog is not wearing a collar.
+    Output: ["There is a dog.", "The dog is black.", "The dog is not wearing a collar."]
+
+    Example 14
+    Input: A blurry close-up photo of a red sign.
+    Output: ["There is a sign.", "The sign is red.", "The photo is blurry.", "The photo is a close-up."]
+
+    Example 15
+    Input: A package of noodles or pasta.
+    Output: ["There is a package.", "The package contains noodles or pasta."]
+    """
+
+    static let atomizeListRepairPrompt = """
+    Repair the JSON syntax in the provided text. The intended value is one top-level JSON array \
+    of strings. Return only the valid JSON array. Preserve every recoverable string exactly as \
+    written and in the same order. Do not add, remove, reorder, or rewrite statements. Do not use \
+    Markdown fences, an object wrapper, or explanatory text.
     """
 
     static let repackagePrompt = """
@@ -361,9 +389,20 @@ nonisolated struct REPACKCaption: Equatable, Identifiable, Sendable {
     var id: Int { index }
 }
 
+nonisolated enum REPACKAtomizationStatus: Equatable, Sendable {
+    case parsed
+    case unparseable
+}
+
+nonisolated struct REPACKAtomizationResult: Equatable, Sendable {
+    let statements: [String]
+    let status: REPACKAtomizationStatus
+}
+
 nonisolated struct REPACKAtomizedCaption: Equatable, Identifiable, Sendable {
     let caption: REPACKCaption
     let statements: [String]
+    let status: REPACKAtomizationStatus
 
     var id: Int { caption.id }
 }

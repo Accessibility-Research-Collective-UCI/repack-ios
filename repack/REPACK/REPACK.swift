@@ -147,6 +147,7 @@ extension REPACK {
 
         let atomizingStart = clock.now
         let atomizedCaptions = try await atomize(captions: captions)
+        let resultCaptions = atomizedCaptions.map(\.caption)
         let atomizingTiming = REPACKStageTiming(
             stage: .atomizing,
             duration: atomizingStart.duration(to: clock.now)
@@ -176,7 +177,7 @@ extension REPACK {
         REPACKMemoryDiagnostics.log("Repackaging stage complete")
 
         let result = REPACKResult(
-            captions: captions,
+            captions: resultCaptions,
             atomizedCaptions: atomizedCaptions,
             scoredAtomics: scoredAtomics,
             retainedAtomics: retainedAtomics,
@@ -238,7 +239,7 @@ extension REPACK {
         return captions
     }
 
-    func atomize(caption: String) async throws -> [String] {
+    func atomize(caption: String) async throws -> REPACKAtomizationResult {
         try await prepareProcessingEngineIfNeeded()
         guard let processingEngine else {
             throw REPACKError.missingTextEngine
@@ -422,19 +423,64 @@ private extension REPACK {
         for caption in captions {
             try Task.checkCancellation()
             emit(.atomizing(completed: atomizedCaptions.count, total: captions.count))
-            let statements = try await atomize(caption: caption.text)
+            let result = try await atomize(caption: caption.text)
             atomizedCaptions.append(
-                REPACKAtomizedCaption(caption: caption, statements: statements)
+                REPACKAtomizedCaption(
+                    caption: caption,
+                    statements: result.statements,
+                    status: result.status
+                )
             )
             debugLog(
-                "Atomized caption \(caption.index) into \(statements.count) statements:\n"
-                    + statements.debugList
+                "Atomized caption \(caption.index) into \(result.statements.count) statements "
+                    + "[\(String(describing: result.status))]:\n"
+                    + result.statements.debugList
             )
             REPACKMemoryDiagnostics.log("Atomized caption \(caption.index)")
             emit(.atomizing(completed: atomizedCaptions.count, total: captions.count))
         }
 
-        return atomizedCaptions
+        return promotingReferenceIfNeeded(in: atomizedCaptions)
+    }
+
+    private func promotingReferenceIfNeeded(
+        in atomizedCaptions: [REPACKAtomizedCaption]
+    ) -> [REPACKAtomizedCaption] {
+        guard let failedReference = atomizedCaptions.first,
+              failedReference.status == .unparseable,
+              let promotedIndex = atomizedCaptions.dropFirst().firstIndex(where: {
+                  $0.status == .parsed && !$0.statements.isEmpty
+              }) else {
+            return atomizedCaptions
+        }
+
+        var reordered = atomizedCaptions
+        let promoted = reordered[promotedIndex]
+
+        // If the reference caption is not parsable into atomics, switch it with the first valid caption.
+        reordered[0] = REPACKAtomizedCaption(
+            caption: REPACKCaption(
+                index: failedReference.caption.index,
+                kind: .reference,
+                text: promoted.caption.text
+            ),
+            statements: promoted.statements,
+            status: promoted.status
+        )
+        reordered[promotedIndex] = REPACKAtomizedCaption(
+            caption: REPACKCaption(
+                index: promoted.caption.index,
+                kind: .sample,
+                text: failedReference.caption.text
+            ),
+            statements: failedReference.statements,
+            status: failedReference.status
+        )
+        debugLog(
+            "Promoted sample \(promoted.caption.index) after the original caption "
+                + "could not be atomized."
+        )
+        return reordered
     }
 
     private func score(

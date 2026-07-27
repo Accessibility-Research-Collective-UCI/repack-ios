@@ -145,6 +145,16 @@ import SwiftUI
     }
 }
 
+#Preview("Output · Atomization Warning") {
+    NavigationStack {
+        REPACKRunView(
+            model: .previewOutputWithAtomizationWarning,
+            restartAction: {},
+            resetAction: {}
+        )
+    }
+}
+
 #Preview("Output · Accessibility") {
     NavigationStack {
         REPACKRunView(model: .previewOutput, restartAction: {}, resetAction: {})
@@ -189,23 +199,47 @@ private extension REPACKViewModel {
     }
 
     static var previewOutput: REPACKViewModel {
+        previewOutput(sampleAtomizationStatus: .parsed)
+    }
+
+    static var previewOutputWithAtomizationWarning: REPACKViewModel {
+        previewOutput(sampleAtomizationStatus: .unparseable)
+    }
+
+    private static func previewOutput(
+        sampleAtomizationStatus: REPACKAtomizationStatus
+    ) -> REPACKViewModel {
         let model = previewModel(phase: .output)
         model.selectedImageURL = previewImageURL
         model.threshold = 0.5
+        let captions = [
+            REPACKCaption(
+                index: 0,
+                kind: .reference,
+                text: "A red can with a white logo sits on a wooden table."
+            ),
+            REPACKCaption(
+                index: 1,
+                kind: .sample,
+                text: "A red can is on a table."
+            )
+        ]
         model.result = REPACKResult(
-            captions: [
-                REPACKCaption(
-                    index: 0,
-                    kind: .reference,
-                    text: "A red can with a white logo sits on a wooden table."
+            captions: captions,
+            atomizedCaptions: [
+                REPACKAtomizedCaption(
+                    caption: captions[0],
+                    statements: ["A red can is visible."],
+                    status: .parsed
                 ),
-                REPACKCaption(
-                    index: 1,
-                    kind: .sample,
-                    text: "A red can is on a table."
+                REPACKAtomizedCaption(
+                    caption: captions[1],
+                    statements: sampleAtomizationStatus == .parsed
+                        ? ["A red can is on a table."]
+                        : [],
+                    status: sampleAtomizationStatus
                 )
             ],
-            atomizedCaptions: [],
             scoredAtomics: [
                 REPACKScoredAtomic(
                     index: 0,

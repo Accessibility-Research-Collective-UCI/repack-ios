@@ -31,8 +31,9 @@ struct REPACKDetailsView: View {
                 }
 
                 detailSection("Original Caption") {
-                    Text(result.captions.first?.text ?? "")
-                        .textSelection(.enabled)
+                    if let caption = result.captions.first {
+                        captionText(caption)
+                    }
                 }
 
                 detailSection("Sample Captions") {
@@ -46,18 +47,21 @@ struct REPACKDetailsView: View {
                         .foregroundStyle(.secondary)
 
                         ForEach(result.captions.dropFirst()) { caption in
-                            HStack(alignment: .top, spacing: 12) {
-                                Text(caption.index, format: .number)
-                                    .monospacedDigit()
-                                    .frame(width: sampleColumnWidth, alignment: .leading)
-                                    .accessibilityLabel("Sample \(caption.index)")
+                            DisclosureGroup {
+                                sampleAtomicStatements(for: caption)
+                                    .padding(.leading, sampleColumnWidth + 12)
+                                    .padding(.vertical, 4)
+                            } label: {
+                                HStack(alignment: .top, spacing: 12) {
+                                    Text(caption.index, format: .number)
+                                        .monospacedDigit()
+                                        .frame(width: sampleColumnWidth, alignment: .leading)
+                                        .accessibilityLabel("Sample \(caption.index)")
 
-                                Text(caption.text)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .multilineTextAlignment(.leading)
-                                    .textSelection(.enabled)
+                                    captionText(caption)
+                                }
+                                .accessibilityElement(children: .combine)
                             }
-                            .accessibilityElement(children: .combine)
                         }
                     }
                 }
@@ -154,6 +158,59 @@ struct REPACKDetailsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func sampleAtomicStatements(for caption: REPACKCaption) -> some View {
+        let statements = atomizedCaption(for: caption)?.statements ?? []
+
+        if statements.isEmpty {
+            Text("No atomic statements available.")
+                .foregroundStyle(.secondary)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(statements, id: \.self) { statement in
+                    Text(statement)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+    }
+
+    private func captionText(_ caption: REPACKCaption) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            if atomizationStatus(for: caption) == .unparseable {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .imageScale(.small)
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel(atomizationWarning(for: caption))
+            }
+
+            Text(caption.text)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func atomizationStatus(for caption: REPACKCaption) -> REPACKAtomizationStatus {
+        atomizedCaption(for: caption)?.status ?? .parsed
+    }
+
+    private func atomizedCaption(for caption: REPACKCaption) -> REPACKAtomizedCaption? {
+        result.atomizedCaptions.first(where: { $0.caption.id == caption.id })
+    }
+
+    private func atomizationWarning(for caption: REPACKCaption) -> String {
+        switch caption.kind {
+        case .reference:
+            String(localized: "Atomic statements could not be parsed for the original caption.")
+        case .sample:
+            String(localized: "Atomic statements could not be parsed for Sample \(caption.index).")
+        }
     }
 
     private var totalDuration: Duration {

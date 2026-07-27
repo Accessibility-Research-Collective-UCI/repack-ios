@@ -88,6 +88,78 @@ struct REPACKTests {
         #expect(fixture.factory.textState.repackagedAtomics.count == 2)
     }
 
+    @Test("An unparseable reference swaps with the first parseable sample")
+    func referencePromotion() async throws {
+        let fixture = Fixture()
+        fixture.factory.textState.atomicResponses["red can with white logo"] = []
+        fixture.factory.textState.atomizationStatuses["red can with white logo"] = .unparseable
+        fixture.factory.textState.atomicResponses["red can"] = []
+        fixture.factory.textState.atomizationStatuses["red can"] = .unparseable
+        let repack = try await REPACK(
+            modelURL: fixture.modelURL,
+            engineFactory: fixture.factory
+        )
+
+        let result = try await repack.process(
+            image: fixture.imageURL,
+            samplePrompt: .describe,
+            sampleCount: 2,
+            threshold: 0.5
+        )
+
+        #expect(
+            result.captions.map(\.text)
+                == ["red can with blue logo", "red can", "red can with white logo"]
+        )
+        #expect(result.captions.map(\.index) == [0, 1, 2])
+        #expect(result.captions.map(\.kind) == [.reference, .sample, .sample])
+        #expect(
+            result.atomizedCaptions.map(\.status)
+                == [.parsed, .unparseable, .unparseable]
+        )
+        #expect(result.atomizedCaptions[0].statements == ["red can", "blue logo"])
+        #expect(result.atomizedCaptions[1].statements.isEmpty)
+        #expect(result.atomizedCaptions[2].statements.isEmpty)
+        #expect(result.scoredAtomics.allSatisfy { atomic in
+            atomic.matches.allSatisfy { $0.statement == nil && $0.score == 0 }
+        })
+        #expect(result.caption.contains("could not verify enough details"))
+
+        let regenerated = try await repack.regenerateCaption(threshold: 0.9)
+        #expect(regenerated.captions == result.captions)
+        #expect(regenerated.atomizedCaptions == result.atomizedCaptions)
+    }
+
+    @Test("All unparseable captions preserve ordering and finish with abstention")
+    func allAtomizationsFail() async throws {
+        let fixture = Fixture()
+        for caption in Array(fixture.factory.textState.atomicResponses.keys) {
+            fixture.factory.textState.atomicResponses[caption] = []
+            fixture.factory.textState.atomizationStatuses[caption] = .unparseable
+        }
+        let repack = try await REPACK(
+            modelURL: fixture.modelURL,
+            engineFactory: fixture.factory
+        )
+
+        let result = try await repack.process(
+            image: fixture.imageURL,
+            samplePrompt: .describe,
+            sampleCount: 2,
+            threshold: 0.5
+        )
+
+        #expect(
+            result.captions.map(\.text)
+                == ["red can with white logo", "red can", "red can with blue logo"]
+        )
+        #expect(result.atomizedCaptions.allSatisfy { $0.status == .unparseable })
+        #expect(result.scoredAtomics.isEmpty)
+        #expect(result.retainedAtomics.isEmpty)
+        #expect(result.caption.contains("could not verify enough details"))
+        #expect(fixture.factory.textState.repackagedAtomics.isEmpty)
+    }
+
     @Test("E4B samples with vision while E2B performs text processing")
     func hybridEngineRoles() async throws {
         let fixture = Fixture()
@@ -632,6 +704,47 @@ struct REPACKTests {
         )
     }
 
+    @Test("List atomization extracts arrays without confusing brackets inside strings")
+    func atomizationListExtraction() throws {
+        let response = """
+            Here is the result:
+            ["A label includes '[NEW]'.", "A quote says \\"hello\\"."]
+            Done.
+            """
+
+        #expect(
+            try AtomizationListParser.parse(response)
+                == ["A label includes '[NEW]'.", "A quote says \"hello\"."]
+        )
+    }
+
+    @Test("List atomization accepts JSON5 syntax")
+    func atomizationListJSON5() throws {
+        let response = """
+            [
+              'There is a can.',
+              'The can is red.',
+            ]
+            """
+
+        #expect(
+            try AtomizationListParser.parse(response)
+                == ["There is a can.", "The can is red."]
+        )
+    }
+
+    @Test("List atomization conservatively closes truncated strings and arrays")
+    func atomizationListStructuralRepair() throws {
+        #expect(
+            try AtomizationListParser.parse("[\"There is a can.\", \"The can is red.")
+                == ["There is a can.", "The can is red."]
+        )
+        #expect(
+            try AtomizationListParser.parse("[\"There is a can.\",]")
+                == ["There is a can."]
+        )
+    }
+
     @Test("List atomization rejects malformed and empty responses")
     func atomizationListParsingFailures() {
         #expect(throws: StructuredAtomizationError.invalidListResponse) {
@@ -639,6 +752,51 @@ struct REPACKTests {
         }
         #expect(throws: StructuredAtomizationError.invalidListResponse) {
             try AtomizationListParser.parse("[\"\", \"  \"]")
+        }
+    }
+
+    @Test("Atomization recovery calls the model only after local repair fails")
+    func atomizationRecoveryUsesModelOnce() async throws {
+        var localRepairCallCount = 0
+        let locallyRecovered = try await AtomizationRecovery.resolve(
+            "[\"There is a can.\""
+        ) {
+            localRepairCallCount += 1
+            return "[\"This should not be used.\"]"
+        }
+        #expect(locallyRecovered.status == .parsed)
+        #expect(locallyRecovered.statements == ["There is a can."])
+        #expect(localRepairCallCount == 0)
+
+        var modelRepairCallCount = 0
+        let modelRecovered = try await AtomizationRecovery.resolve("not json") {
+            modelRepairCallCount += 1
+            return "[\"There is a bottle.\"]"
+        }
+        #expect(modelRecovered.status == .parsed)
+        #expect(modelRecovered.statements == ["There is a bottle."])
+        #expect(modelRepairCallCount == 1)
+    }
+
+    @Test("Atomization recovery returns an empty status after one failed model repair")
+    func atomizationRecoveryFailureContinues() async throws {
+        var modelRepairCallCount = 0
+        let result = try await AtomizationRecovery.resolve("not json") {
+            modelRepairCallCount += 1
+            throw StructuredAtomizationError.invalidListResponse
+        }
+
+        #expect(result.status == .unparseable)
+        #expect(result.statements.isEmpty)
+        #expect(modelRepairCallCount == 1)
+    }
+
+    @Test("Atomization recovery propagates cancellation")
+    func atomizationRecoveryCancellation() async {
+        await #expect(throws: CancellationError.self) {
+            try await AtomizationRecovery.resolve("not json") {
+                throw CancellationError()
+            }
         }
     }
 
@@ -857,6 +1015,7 @@ nonisolated private struct FixedMemoryProvider: REPACKMemoryProviding {
 private final class FakeEngineState {
     var captionResponses: [Int: String] = [:]
     var atomicResponses: [String: [String]] = [:]
+    var atomizationStatuses: [String: REPACKAtomizationStatus] = [:]
     var captionSeeds: [Int] = []
     var atomizedCaptions: [String] = []
     var repackagedAtomics: [[String]] = []
@@ -880,9 +1039,12 @@ private final class FakeInferenceEngine: REPACKInferenceEngine {
         return state.captionResponses[seed] ?? "caption \(seed)"
     }
 
-    func atomize(caption: String) async throws -> [String] {
+    func atomize(caption: String) async throws -> REPACKAtomizationResult {
         state.atomizedCaptions.append(caption)
-        return state.atomicResponses[caption] ?? [caption]
+        return REPACKAtomizationResult(
+            statements: state.atomicResponses[caption] ?? [caption],
+            status: state.atomizationStatuses[caption] ?? .parsed
+        )
     }
 
     func repackage(atomics: [String]) async throws -> String {
