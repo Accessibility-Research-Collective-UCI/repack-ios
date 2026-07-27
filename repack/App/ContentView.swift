@@ -8,7 +8,7 @@ struct ContentView: View {
     }
 
     @Environment(\.scenePhase) private var scenePhase
-    @State private var model = REPACKViewModel()
+    @State private var model = AppModel()
     @State private var powerController = CaptioningPowerController()
     @State private var path: [Route] = []
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -17,7 +17,7 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            REPACKHomeView(
+            HomeView(
                 model: model,
                 selectedPhotoItem: $selectedPhotoItem,
                 showCamera: $isCameraPresented,
@@ -31,10 +31,16 @@ struct ContentView: View {
                 }
             )
             .navigationDestination(for: Route.self) { _ in
-                REPACKRunView(
+                RunView(
                     model: model,
                     restartAction: {
                         model.startProcessing()
+                    },
+                    cancelAction: {
+                        Task {
+                            await model.cancelProcessing()
+                            path.removeAll()
+                        }
                     },
                     resetAction: {
                         Task {
@@ -90,7 +96,7 @@ struct ContentView: View {
             .ignoresSafeArea()
         }
         .sheet(isPresented: $isModelManagerPresented) {
-            ModelManagerView(model: model)
+            ModelLibraryView(model: model)
         }
         .alert(
             "REPACK",

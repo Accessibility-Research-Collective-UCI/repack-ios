@@ -1,14 +1,14 @@
 import Foundation
 
-nonisolated enum ModelInstallationOrigin: String, Codable, Sendable {
+nonisolated enum InstallationOrigin: String, Codable, Sendable {
     case bundled
     case approved
     case imported
 }
 
-nonisolated struct ModelInstallationRecord: Codable, Equatable, Sendable {
+nonisolated struct InstallationRecord: Codable, Equatable, Sendable {
     let fileName: String
-    let origin: ModelInstallationOrigin
+    let origin: InstallationOrigin
     let model: DownloadableModel?
     var explicitlyOwned: Bool
     var requiredBy: Set<DownloadableModel>
@@ -18,12 +18,12 @@ nonisolated struct ModelInstallationRecord: Codable, Equatable, Sendable {
 nonisolated struct LocalModel: Identifiable, Equatable, Sendable {
     let url: URL
     let isBundled: Bool
-    let origin: ModelInstallationOrigin
+    let origin: InstallationOrigin
 
     init(
         url: URL,
         isBundled: Bool,
-        origin: ModelInstallationOrigin? = nil
+        origin: InstallationOrigin? = nil
     ) {
         self.url = url
         self.isBundled = isBundled
@@ -39,9 +39,9 @@ nonisolated struct LocalModel: Identifiable, Equatable, Sendable {
     }
 }
 
-nonisolated struct ModelStorageItem: Identifiable, Equatable, Sendable {
+nonisolated struct StorageItem: Identifiable, Equatable, Sendable {
     let model: LocalModel
-    let record: ModelInstallationRecord
+    let record: InstallationRecord
 
     var id: String { model.id }
     var displayName: String { model.displayName }
@@ -64,8 +64,8 @@ nonisolated struct ModelStorageItem: Identifiable, Equatable, Sendable {
     }
 }
 
-nonisolated struct ModelDeletionPlan: Equatable, Sendable {
-    let items: [ModelStorageItem]
+nonisolated struct DeletionPlan: Equatable, Sendable {
+    let items: [StorageItem]
 
     var ids: Set<String> { Set(items.map(\.id)) }
     var recoveredBytes: Int64 { items.reduce(0) { $0 + $1.byteCount } }
@@ -80,36 +80,24 @@ nonisolated struct ModelDeletionPlan: Equatable, Sendable {
     }
 }
 
-struct ModelManager {
-    private let storedModelPathKey = "GemmaModelPath"
+struct ModelLibrary {
     private let modelExtension = "litertlm"
     private let downloadService: any ModelDownloadServicing
     private let installationStore: ModelInstallationStore
+    private let fileManager: FileManager
 
     init(
         downloadService: any ModelDownloadServicing = ModelDownloadService(),
-        installationDefaults: UserDefaults = .standard
+        installationDefaults: UserDefaults = .standard,
+        fileManager: FileManager = .default
     ) {
         self.downloadService = downloadService
+        self.fileManager = fileManager
         installationStore = ModelInstallationStore(defaults: installationDefaults)
     }
 
-    func refreshLocalModels(currentModelURL: URL?) -> (models: [LocalModel], selectedModelURL: URL?) {
-        let models = installationStore.reconcile(localModels())
-        var selectedModelURL = currentModelURL
-
-        if selectedModelURL == nil {
-            selectedModelURL = storedModelURL() ?? models.first?.url
-        } else if let currentModelURL, !models.contains(where: { Self.sameFile($0.url, currentModelURL) }) {
-            selectedModelURL = models.first?.url
-            UserDefaults.standard.removeObject(forKey: storedModelPathKey)
-        }
-
-        return (models, selectedModelURL)
-    }
-
-    func rememberSelectedModel(_ url: URL) {
-        UserDefaults.standard.set(url.path, forKey: storedModelPathKey)
+    func refreshLocalModels() -> [LocalModel] {
+        installationStore.reconcile(localModels())
     }
 
     func markExplicitOwnership(of model: LocalModel) {
@@ -121,16 +109,16 @@ struct ModelManager {
         installationStore.markExplicit(downloadable)
     }
 
-    func prepareDownloadPlan(for model: DownloadableModel) async throws -> ModelDownloadPlan {
+    func prepareDownloadPlan(for model: DownloadableModel) async throws -> DownloadPlan {
         #if DEBUG
-            let validatesWithoutKeepingFiles = true
+            let policy: DownloadPolicy = .validateAndRemove
         #else
-            let validatesWithoutKeepingFiles = false
+            let policy: DownloadPolicy = .install
         #endif
 
         let plan = try await downloadService.preparePlan(
             for: model,
-            validatesWithoutKeepingFiles: validatesWithoutKeepingFiles
+            policy: policy
         )
         #if !DEBUG
         if plan.files.isEmpty {
@@ -141,9 +129,9 @@ struct ModelManager {
     }
 
     func download(
-        plan: ModelDownloadPlan,
-        progressHandler: @escaping @Sendable (ModelDownloadProgress) async -> Void
-    ) async throws -> ModelDownloadOutcome {
+        plan: DownloadPlan,
+        progressHandler: @escaping @Sendable (DownloadProgress) async -> Void
+    ) async throws -> DownloadOutcome {
         let outcome = try await downloadService.execute(
             plan,
             progressHandler: progressHandler
@@ -158,7 +146,7 @@ struct ModelManager {
         await downloadService.cancelCurrentDownload()
     }
 
-    func storageItems(from models: [LocalModel]) -> [ModelStorageItem] {
+    func storageItems(from models: [LocalModel]) -> [StorageItem] {
         let records = Dictionary(
             uniqueKeysWithValues: installationStore.records().map {
                 ($0.fileName, $0)
@@ -170,15 +158,15 @@ struct ModelManager {
             else {
                 return nil
             }
-            return ModelStorageItem(model: model, record: record)
+            return StorageItem(model: model, record: record)
         }
     }
 
     nonisolated func deletionSelection(
-        toggling item: ModelStorageItem,
+        toggling item: StorageItem,
         isSelected: Bool,
         current: Set<String>,
-        items: [ModelStorageItem]
+        items: [StorageItem]
     ) -> Set<String> {
         var selection = current
         let approvedE2B = items.first {
@@ -208,8 +196,8 @@ struct ModelManager {
 
     nonisolated func deletionPlan(
         selection: Set<String>,
-        items: [ModelStorageItem]
-    ) -> ModelDeletionPlan {
+        items: [StorageItem]
+    ) -> DeletionPlan {
         var resolved = selection
         if let approvedE2B = items.first(where: {
             $0.record.origin == .approved && $0.record.model == .e2b
@@ -219,23 +207,19 @@ struct ModelManager {
             }) {
             resolved.insert(approvedE4B.id)
         }
-        return ModelDeletionPlan(
+        return DeletionPlan(
             items: items.filter { resolved.contains($0.id) }
         )
     }
 
-    func deleteModels(_ plan: ModelDeletionPlan) throws {
+    func deleteModels(_ plan: DeletionPlan) throws {
         for item in plan.items {
-            try FileManager.default.removeItem(at: item.model.url)
+            try fileManager.removeItem(at: item.model.url)
             let legacyMarker = item.model.url.deletingLastPathComponent()
                 .appending(path: ".\(item.model.url.lastPathComponent).verified.plist")
-            try? FileManager.default.removeItem(at: legacyMarker)
+            try? fileManager.removeItem(at: legacyMarker)
         }
         installationStore.remove(plan.items.map(\.record))
-    }
-
-    func isDownloadInstalled(_ model: DownloadableModel) async -> Bool {
-        await downloadService.isInstalled(model)
     }
 
     func cleanDownloadStagingDirectory() async {
@@ -255,8 +239,8 @@ struct ModelManager {
             .map { LocalModel(url: $0, isBundled: true) }
         #endif
 
-        if let directory = try? Self.modelsDirectory() {
-            let savedModels = (try? FileManager.default.contentsOfDirectory(
+        if let directory = try? Self.modelsDirectory(fileManager: fileManager) {
+            let savedModels = (try? fileManager.contentsOfDirectory(
                 at: directory,
                 includingPropertiesForKeys: nil
             )) ?? []
@@ -276,14 +260,6 @@ struct ModelManager {
             }
             return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
         }
-    }
-
-    private func storedModelURL() -> URL? {
-        guard let path = UserDefaults.standard.string(forKey: storedModelPathKey),
-              FileManager.default.fileExists(atPath: path) else {
-            return nil
-        }
-        return URL(fileURLWithPath: path)
     }
 
     nonisolated static func sameFile(_ lhs: URL?, _ rhs: URL?) -> Bool {
@@ -310,21 +286,21 @@ struct ModelManager {
         DownloadableModel(modelURL: modelURL) == .e4b
     }
 
-    nonisolated static func applicationSupportDirectory() throws -> URL {
-        let baseURL = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let appURL = baseURL.appendingPathComponent("repack", isDirectory: true)
-        try FileManager.default.createDirectory(at: appURL, withIntermediateDirectories: true)
+    nonisolated static func applicationSupportDirectory(
+        fileManager: FileManager = .default
+    ) throws -> URL {
+        let appURL = URL.applicationSupportDirectory
+            .appending(path: "repack", directoryHint: .isDirectory)
+        try fileManager.createDirectory(at: appURL, withIntermediateDirectories: true)
         return appURL
     }
 
-    private nonisolated static func modelsDirectory() throws -> URL {
-        let directory = try applicationSupportDirectory().appendingPathComponent("Models", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    private nonisolated static func modelsDirectory(
+        fileManager: FileManager
+    ) throws -> URL {
+        let directory = try applicationSupportDirectory(fileManager: fileManager)
+            .appending(path: "Models", directoryHint: .isDirectory)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
 }
@@ -337,10 +313,10 @@ private struct ModelInstallationStore {
         self.defaults = defaults
     }
 
-    func records() -> [ModelInstallationRecord] {
+    func records() -> [InstallationRecord] {
         guard let data = defaults.data(forKey: key),
             let records = try? PropertyListDecoder().decode(
-                [ModelInstallationRecord].self,
+                [InstallationRecord].self,
                 from: data
             )
         else {
@@ -366,7 +342,7 @@ private struct ModelInstallationStore {
                     $0.fileName == fileName
                 }
                 records.append(
-                    ModelInstallationRecord(
+                    InstallationRecord(
                         fileName: fileName,
                         origin: approvedModel == nil ? .imported : .approved,
                         model: approvedModel,
@@ -407,7 +383,7 @@ private struct ModelInstallationStore {
         }
     }
 
-    func recordDownload(_ plan: ModelDownloadPlan) {
+    func recordDownload(_ plan: DownloadPlan) {
         var records = records()
         for file in plan.files {
             let descriptor = file.descriptor
@@ -416,7 +392,7 @@ private struct ModelInstallationStore {
             }
             let explicitlyOwned = descriptor.model == plan.requestedModel
                 || (index.map { records[$0].explicitlyOwned } ?? false)
-            let record = ModelInstallationRecord(
+            let record = InstallationRecord(
                 fileName: descriptor.fileName,
                 origin: .approved,
                 model: descriptor.model,
@@ -453,7 +429,7 @@ private struct ModelInstallationStore {
         save(records)
     }
 
-    func remove(_ removed: [ModelInstallationRecord]) {
+    func remove(_ removed: [InstallationRecord]) {
         let removedNames = Set(removed.map(\.fileName))
         let removedE4B = removed.contains {
             $0.origin == .approved && $0.model == .e4b
@@ -472,7 +448,7 @@ private struct ModelInstallationStore {
         save(records)
     }
 
-    private func save(_ records: [ModelInstallationRecord]) {
+    private func save(_ records: [InstallationRecord]) {
         guard let data = try? PropertyListEncoder().encode(records) else { return }
         defaults.set(data, forKey: key)
     }

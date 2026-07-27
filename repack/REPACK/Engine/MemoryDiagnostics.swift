@@ -3,7 +3,7 @@ import Darwin
 import Foundation
 import Metal
 
-nonisolated enum REPACKMemoryDiagnostics {
+nonisolated enum MemoryDiagnostics {
     static func log(_ label: String) {
         let info = taskMemoryInfo()
         let available = UInt64(os_proc_available_memory())
@@ -52,7 +52,7 @@ nonisolated enum REPACKMemoryDiagnostics {
     }
 }
 #else
-nonisolated enum REPACKMemoryDiagnostics {
+nonisolated enum MemoryDiagnostics {
     static func log(_ label: String) {}
 }
 #endif

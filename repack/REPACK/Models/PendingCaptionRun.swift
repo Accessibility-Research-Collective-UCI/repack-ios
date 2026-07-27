@@ -11,7 +11,7 @@ nonisolated struct PendingCaptionRun: Codable, Equatable, Sendable {
     var isValid: Bool {
         !imageFilename.isEmpty
             && !modelFilename.isEmpty
-            && REPACKViewModel.PromptChoice(rawValue: promptChoice) != nil
+            && AppModel.PromptChoice(rawValue: promptChoice) != nil
             && 1...10 ~= sampleCount
             && 0...1 ~= threshold
     }

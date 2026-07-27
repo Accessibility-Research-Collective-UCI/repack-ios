@@ -15,7 +15,7 @@ protocol CaptionExecutionCoordinating: AnyObject {
         expiration: @escaping @MainActor () -> Void
     ) -> CaptionExecutionMode
 
-    func report(_ progress: REPACKProgress)
+    func report(_ progress: PipelineProgress)
     func complete(success: Bool)
 }
 
@@ -41,25 +41,18 @@ protocol ContinuedProcessingTaskHandling: AnyObject {
     func setTaskCompleted(success: Bool)
 }
 
-typealias CaptionTaskScheduling = ContinuedProcessingTaskScheduling
-typealias CaptionTaskHandling = ContinuedProcessingTaskHandling
-
 @MainActor
 final class CaptionExecutionCoordinator: CaptionExecutionCoordinating {
     static let shared = CaptionExecutionCoordinator()
     static let taskIdentifier = "com.uci.repack-tester.captioning"
 
-    private let scheduler: any CaptionTaskScheduling
+    private let scheduler: any ContinuedProcessingTaskScheduling
+    private let session = BackgroundTaskSession()
     private var didAttemptRegistration = false
     private var isRegistered = false
-    private var pendingStart: (@MainActor () -> Void)?
-    private var pendingExpiration: (@MainActor () -> Void)?
-    private var activeTask: (any CaptionTaskHandling)?
-    private var activeTaskCompleted = false
-    private var lastProgressUnitCount: Int64 = 0
 
     init(
-        scheduler: any CaptionTaskScheduling =
+        scheduler: any ContinuedProcessingTaskScheduling =
             SystemContinuedProcessingTaskScheduler(mode: .captioning)
     ) {
         self.scheduler = scheduler
@@ -99,8 +92,12 @@ final class CaptionExecutionCoordinator: CaptionExecutionCoordinating {
             return .foregroundOnly
         }
 
-        pendingStart = start
-        pendingExpiration = expiration
+        session.prepare(
+            identifier: Self.taskIdentifier,
+            totalUnitCount: 100,
+            start: start,
+            expiration: expiration
+        )
 
         do {
             try scheduler.submit(
@@ -111,8 +108,7 @@ final class CaptionExecutionCoordinator: CaptionExecutionCoordinating {
             captionBackgroundLog("Submitted background GPU request with the immediate-fail strategy.")
             return .backgroundProtected
         } catch {
-            pendingStart = nil
-            pendingExpiration = nil
+            session.clear()
             captionBackgroundLog(
                 "Background GPU request was rejected; using foreground-only captioning. \(error)"
             )
@@ -120,72 +116,36 @@ final class CaptionExecutionCoordinator: CaptionExecutionCoordinating {
         }
     }
 
-    func report(_ progress: REPACKProgress) {
-        guard let activeTask, !activeTaskCompleted else { return }
-
-        let unitCount = max(lastProgressUnitCount, progress.continuedTaskUnitCount)
-        lastProgressUnitCount = unitCount
-        activeTask.progress.completedUnitCount = unitCount
-        activeTask.updateTitle(
-            String(localized: "Captioning Image"),
+    func report(_ progress: PipelineProgress) {
+        session.report(
+            unitCount: progress.continuedTaskUnitCount,
+            title: String(localized: "Captioning Image"),
             subtitle: progress.continuedTaskSubtitle
         )
     }
 
     func complete(success: Bool) {
-        if let activeTask, !activeTaskCompleted {
-            activeTaskCompleted = true
-            if success {
-                activeTask.progress.completedUnitCount = activeTask.progress.totalUnitCount
-                activeTask.updateTitle(
-                    String(localized: "Captioning Image"),
-                    subtitle: String(localized: "Caption complete.")
-                )
-            }
-            activeTask.setTaskCompleted(success: success)
-            captionBackgroundLog("Completed granted background task with success=\(success).")
-        } else if pendingStart != nil {
-            scheduler.cancel(identifier: Self.taskIdentifier)
-            captionBackgroundLog("Cancelled the pending background GPU request.")
-        }
-
-        clearExecution()
+        session.complete(
+            success: success,
+            title: String(localized: "Captioning Image"),
+            successSubtitle: String(localized: "Caption complete."),
+            scheduler: scheduler
+        )
+        captionBackgroundLog("Completed background task with success=\(success).")
     }
 
-    private func handleLaunch(_ task: any CaptionTaskHandling) {
-        guard let start = pendingStart else {
-            task.setTaskCompleted(success: false)
-            return
-        }
-
-        activeTask = task
-        activeTaskCompleted = false
-        lastProgressUnitCount = 0
+    private func handleLaunch(_ task: any ContinuedProcessingTaskHandling) {
+        guard let start = session.launch(task) else { return }
         captionBackgroundLog("Background GPU request was granted; starting inference.")
-        task.progress.totalUnitCount = 100
-        task.progress.completedUnitCount = 0
-        task.setExpirationHandler { [weak self] in
-            captionBackgroundLog("Background GPU task expired.")
-            self?.pendingExpiration?()
-        }
-        pendingStart = nil
         start()
     }
 
     private func cancelCurrentExecution() {
-        guard activeTask != nil || pendingStart != nil else {
-            clearExecution()
+        guard session.isActive else {
+            session.clear()
             return
         }
         complete(success: false)
-    }
-
-    private func clearExecution() {
-        pendingStart = nil
-        pendingExpiration = nil
-        activeTask = nil
-        activeTaskCompleted = false
-        lastProgressUnitCount = 0
     }
 }
 
@@ -281,20 +241,20 @@ private final class SystemContinuedProcessingTask:
     }
 }
 
-private extension REPACKProgress {
+private extension PipelineProgress {
     nonisolated var continuedTaskUnitCount: Int64 {
         let fraction: Double
         switch self {
         case .preparingVisionModel:
             fraction = 0
-        case .sampling(let completed, let total):
-            fraction = 40 * Self.fraction(completed: completed, total: total)
+        case .sampling:
+            fraction = 40 * (fractionCompleted ?? 1)
         case .preparingTextModel:
             fraction = 40
-        case .atomizing(let completed, let total):
-            fraction = 40 + 40 * Self.fraction(completed: completed, total: total)
-        case .scoring(let completed, let total):
-            fraction = 80 + 15 * Self.fraction(completed: completed, total: total)
+        case .atomizing:
+            fraction = 40 + 40 * (fractionCompleted ?? 1)
+        case .scoring:
+            fraction = 80 + 15 * (fractionCompleted ?? 1)
         case .repackaging:
             fraction = 95
         }
@@ -318,8 +278,4 @@ private extension REPACKProgress {
         }
     }
 
-    nonisolated static func fraction(completed: Int, total: Int) -> Double {
-        guard total > 0 else { return 1 }
-        return min(max(Double(completed) / Double(total), 0), 1)
-    }
 }

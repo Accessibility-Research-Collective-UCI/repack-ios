@@ -1,5 +1,4 @@
 import Foundation
-@preconcurrency import LiteRTLM
 import Testing
 @testable import repack
 
@@ -8,9 +7,9 @@ import Testing
 struct REPACKTests {
     @Test("Prompt options resolve through replaceable constants")
     func promptResolution() {
-        #expect(REPACKPrompt.product.resolvedText == REPACKPrompts.productPrompt)
-        #expect(REPACKPrompt.describe.resolvedText == REPACKPrompts.describePrompt)
-        #expect(REPACKPrompt.custom("  Custom caption request. \n").resolvedText == "Custom caption request.")
+        #expect(CaptionPrompt.product.resolvedText == Prompts.productPrompt)
+        #expect(CaptionPrompt.describe.resolvedText == Prompts.describePrompt)
+        #expect(CaptionPrompt.custom("  Custom caption request. \n").resolvedText == "Custom caption request.")
     }
 
     @Test("Model URLs resolve to user-facing names and descriptions")
@@ -25,7 +24,7 @@ struct REPACKTests {
         #expect(e4B.displayName == "Gemma 4 E4B")
         #expect(e4B.shortDescription.contains("Gemma 4 E2B is also needed"))
 
-        let viewModel = REPACKViewModel()
+        let viewModel = AppModel()
         viewModel.modelURL = e4BURL
         viewModel.localModels = [
             LocalModel(url: e4BURL, isBundled: false),
@@ -34,6 +33,10 @@ struct REPACKTests {
         #expect(viewModel.selectedModelName == "Gemma 4 E4B")
         #expect(viewModel.verificationModelName == "Gemma 4 E2B")
 
+        viewModel.promptChoice = .product
+        #expect(viewModel.promptDisplayText == "Product preset")
+        viewModel.promptChoice = .describe
+        #expect(viewModel.promptDisplayText == "Describe preset")
         viewModel.promptChoice = .custom
         viewModel.customPrompt = "  Focus on readable text.  "
         #expect(viewModel.promptDisplayText == "Focus on readable text.")
@@ -41,7 +44,7 @@ struct REPACKTests {
 
     @Test("Verification defaults to fifty percent")
     func defaultVerificationThreshold() {
-        let viewModel = REPACKViewModel()
+        let viewModel = AppModel()
 
         #expect(viewModel.threshold == 0.5)
     }
@@ -49,11 +52,11 @@ struct REPACKTests {
     @Test("Process generates N plus one captions and caches scoring for regeneration")
     func completePipelineAndRegeneration() async throws {
         let fixture = Fixture()
-        let repack = try await REPACK(
+        let repack = try await REPACKPipeline(
             modelURL: fixture.modelURL,
             engineFactory: fixture.factory
         )
-        var progress: [REPACKProgress] = []
+        var progress: [PipelineProgress] = []
 
         let result = try await repack.process(
             image: fixture.imageURL,
@@ -95,7 +98,7 @@ struct REPACKTests {
         fixture.factory.textState.atomizationStatuses["red can with white logo"] = .unparseable
         fixture.factory.textState.atomicResponses["red can"] = []
         fixture.factory.textState.atomizationStatuses["red can"] = .unparseable
-        let repack = try await REPACK(
+        let repack = try await REPACKPipeline(
             modelURL: fixture.modelURL,
             engineFactory: fixture.factory
         )
@@ -137,7 +140,7 @@ struct REPACKTests {
             fixture.factory.textState.atomicResponses[caption] = []
             fixture.factory.textState.atomizationStatuses[caption] = .unparseable
         }
-        let repack = try await REPACK(
+        let repack = try await REPACKPipeline(
             modelURL: fixture.modelURL,
             engineFactory: fixture.factory
         )
@@ -165,11 +168,11 @@ struct REPACKTests {
         let fixture = Fixture()
         let e4BURL = URL(fileURLWithPath: "/tmp/gemma-4-E4B-it.litertlm")
         let e2BURL = URL(fileURLWithPath: "/tmp/gemma-4-E2B-it.litertlm")
-        let repack = try await REPACK(
+        let repack = try await REPACKPipeline(
             samplingModelURL: e4BURL,
             processingModelURL: e2BURL,
             engineFactory: fixture.factory,
-            devicePolicy: REPACKDevicePolicy(modelIdentifier: "iPhone18,1")
+            devicePolicy: DevicePolicy(modelIdentifier: "iPhone18,1")
         )
 
         let result = try await repack.process(
@@ -193,18 +196,18 @@ struct REPACKTests {
     @Test("Device generations select the intended E4B policy")
     func devicePolicies() {
         for identifier in ["iPhone15,4", "iPhone15,5", "iPhone16,1", "iPhone16,2"] {
-            #expect(REPACKDevicePolicy(modelIdentifier: identifier).e4BMode == .unavailable)
+            #expect(DevicePolicy(modelIdentifier: identifier).e4BMode == .unavailable)
         }
 
         for identifier in [
             "iPhone17,1", "iPhone17,2", "iPhone17,3", "iPhone17,4", "iPhone17,5",
             "iPhone18,3", "iPhone18,5"
         ] {
-            #expect(REPACKDevicePolicy(modelIdentifier: identifier).e4BMode == .adaptive)
+            #expect(DevicePolicy(modelIdentifier: identifier).e4BMode == .adaptive)
         }
 
         for identifier in ["iPhone18,1", "iPhone18,2", "iPhone18,4"] {
-            #expect(REPACKDevicePolicy(modelIdentifier: identifier).e4BMode == .resident)
+            #expect(DevicePolicy(modelIdentifier: identifier).e4BMode == .resident)
         }
     }
 
@@ -212,12 +215,12 @@ struct REPACKTests {
     func iPhone15RejectsE4B() async {
         let fixture = Fixture()
 
-        await #expect(throws: REPACKError.e4BUnavailableOnDevice) {
-            try await REPACK(
+        await #expect(throws: PipelineError.e4BUnavailableOnDevice) {
+            try await REPACKPipeline(
                 samplingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E4B-it.litertlm"),
                 processingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E2B-it.litertlm"),
                 engineFactory: fixture.factory,
-                devicePolicy: REPACKDevicePolicy(modelIdentifier: "iPhone16,1")
+                devicePolicy: DevicePolicy(modelIdentifier: "iPhone16,1")
             )
         }
         #expect(fixture.factory.events.isEmpty)
@@ -226,9 +229,9 @@ struct REPACKTests {
     @Test("iPhone 15 model controls only allow E2B")
     func iPhone15ModelAvailability() {
         let fixture = Fixture()
-        let viewModel = REPACKViewModel(
+        let viewModel = AppModel(
             engineFactory: fixture.factory,
-            devicePolicy: REPACKDevicePolicy(modelIdentifier: "iPhone15,4")
+            devicePolicy: DevicePolicy(modelIdentifier: "iPhone15,4")
         )
         let e2BURL = URL(fileURLWithPath: "/tmp/gemma-4-E2B-it.litertlm")
         let e4BURL = URL(fileURLWithPath: "/tmp/gemma-4-E4B-it.litertlm")
@@ -242,13 +245,13 @@ struct REPACKTests {
     @Test("Adaptive devices keep both engines resident with sufficient memory")
     func adaptiveResidentEngines() async throws {
         let fixture = Fixture()
-        let repack = try await REPACK(
+        let repack = try await REPACKPipeline(
             samplingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E4B-it.litertlm"),
             processingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E2B-it.litertlm"),
             engineFactory: fixture.factory,
-            devicePolicy: REPACKDevicePolicy(modelIdentifier: "iPhone17,3"),
+            devicePolicy: DevicePolicy(modelIdentifier: "iPhone17,3"),
             memoryProvider: FixedMemoryProvider(
-                bytes: REPACKDevicePolicy.minimumAvailableForResidentEngines
+                bytes: DevicePolicy.minimumAvailableForResidentEngines
             )
         )
 
@@ -261,13 +264,13 @@ struct REPACKTests {
     @Test("Adaptive devices switch from E4B to E2B when memory is constrained")
     func adaptiveSequentialEngines() async throws {
         let fixture = Fixture()
-        let repack = try await REPACK(
+        let repack = try await REPACKPipeline(
             samplingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E4B-it.litertlm"),
             processingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E2B-it.litertlm"),
             engineFactory: fixture.factory,
-            devicePolicy: REPACKDevicePolicy(modelIdentifier: "iPhone18,3"),
+            devicePolicy: DevicePolicy(modelIdentifier: "iPhone18,3"),
             memoryProvider: FixedMemoryProvider(
-                bytes: REPACKDevicePolicy.minimumAvailableForResidentEngines - 1
+                bytes: DevicePolicy.minimumAvailableForResidentEngines - 1
             )
         )
 
@@ -299,19 +302,19 @@ struct REPACKTests {
         )
 
         #expect(
-            ModelManager.processingModelURL(
+            ModelLibrary.processingModelURL(
                 for: e2B.url,
                 availableModels: [e2B, e4B]
             ) == e2B.url
         )
         #expect(
-            ModelManager.processingModelURL(
+            ModelLibrary.processingModelURL(
                 for: e4B.url,
                 availableModels: [e4B, e2B]
             ) == e2B.url
         )
         #expect(
-            ModelManager.processingModelURL(
+            ModelLibrary.processingModelURL(
                 for: e4B.url,
                 availableModels: [e4B]
             ) == nil
@@ -321,7 +324,7 @@ struct REPACKTests {
     @Test("Scoring uses the reference atomic as the BLEU candidate")
     func scoreDirectionAndEmptySamples() async throws {
         let fixture = Fixture()
-        let repack = try await REPACK(
+        let repack = try await REPACKPipeline(
             modelURL: fixture.modelURL,
             engineFactory: fixture.factory
         )
@@ -346,7 +349,7 @@ struct REPACKTests {
     @Test("Threshold comparison is inclusive and an empty selection abstains")
     func inclusiveThresholdAndAbstention() async throws {
         let fixture = Fixture()
-        let repack = try await REPACK(
+        let repack = try await REPACKPipeline(
             modelURL: fixture.modelURL,
             engineFactory: fixture.factory
         )
@@ -363,7 +366,7 @@ struct REPACKTests {
 
         let abstention = try await repack.repackage(
             referenceAtomsAndScores: [
-                REPACKScoredAtomic(
+                ScoredAtomic(
                     index: 0,
                     statement: "unsupported detail",
                     matches: [],
@@ -378,7 +381,7 @@ struct REPACKTests {
     @Test("Threshold debounce cancels stale requests and publishes the latest value")
     func thresholdDebounce() async throws {
         let fixture = Fixture()
-        let viewModel = REPACKViewModel(engineFactory: fixture.factory)
+        let viewModel = AppModel(engineFactory: fixture.factory)
 
         await viewModel.selectModel(
             LocalModel(url: fixture.modelURL, isBundled: false)
@@ -406,7 +409,7 @@ struct REPACKTests {
         fixture.factory.visionState.captionDelay = .seconds(5)
         let executionCoordinator = FakeCaptionExecutionCoordinator(mode: .foregroundOnly)
         let pendingRunStore = FakePendingCaptionRunStore()
-        let viewModel = REPACKViewModel(
+        let viewModel = AppModel(
             engineFactory: fixture.factory,
             captionExecutionCoordinator: executionCoordinator,
             pendingRunStore: pendingRunStore
@@ -436,7 +439,7 @@ struct REPACKTests {
     @Test("Scene activation does not load a model without explicit selection")
     func modelLoadingRequiresExplicitSelection() async {
         let fixture = Fixture()
-        let viewModel = REPACKViewModel(engineFactory: fixture.factory)
+        let viewModel = AppModel(engineFactory: fixture.factory)
         viewModel.modelURL = fixture.modelURL
         viewModel.localModels = [
             LocalModel(url: fixture.modelURL, isBundled: false)
@@ -461,13 +464,13 @@ struct REPACKTests {
     @Test("Model selection is visible before loading begins")
     func modelSelectionPrecedesLoading() async {
         let fixture = Fixture()
-        let viewModel = REPACKViewModel(engineFactory: fixture.factory)
+        let viewModel = AppModel(engineFactory: fixture.factory)
         let localModel = LocalModel(url: fixture.modelURL, isBundled: false)
         viewModel.localModels = [localModel]
 
         await viewModel.prepareModelSelection(localModel)
 
-        #expect(ModelManager.sameFile(viewModel.modelURL, fixture.modelURL))
+        #expect(ModelLibrary.sameFile(viewModel.modelURL, fixture.modelURL))
         #expect(viewModel.phase == .missingModel)
         #expect(fixture.factory.events.isEmpty)
 
@@ -481,8 +484,8 @@ struct REPACKTests {
     func cancellingDownloadLeavesModelUnloaded() async throws {
         let fixture = Fixture()
         let downloadService = LifecycleModelDownloadService(mode: .waitForCancellation)
-        let viewModel = REPACKViewModel(
-            modelManager: ModelManager(downloadService: downloadService),
+        let viewModel = AppModel(
+            modelManager: ModelLibrary(downloadService: downloadService),
             engineFactory: fixture.factory,
             modelDownloadExecutionCoordinator: FakeModelDownloadExecutionCoordinator(),
             modelDownloadNotifier: FakeModelDownloadNotifier()
@@ -509,8 +512,8 @@ struct REPACKTests {
         let downloadService = LifecycleModelDownloadService(
             mode: .complete(.installed(fixture.modelURL))
         )
-        let viewModel = REPACKViewModel(
-            modelManager: ModelManager(downloadService: downloadService),
+        let viewModel = AppModel(
+            modelManager: ModelLibrary(downloadService: downloadService),
             engineFactory: fixture.factory,
             modelDownloadExecutionCoordinator: FakeModelDownloadExecutionCoordinator(),
             modelDownloadNotifier: FakeModelDownloadNotifier()
@@ -539,7 +542,7 @@ struct REPACKTests {
             mode: .backgroundProtected
         )
         let pendingRunStore = FakePendingCaptionRunStore()
-        let viewModel = REPACKViewModel(
+        let viewModel = AppModel(
             engineFactory: fixture.factory,
             captionExecutionCoordinator: executionCoordinator,
             pendingRunStore: pendingRunStore
@@ -567,7 +570,7 @@ struct REPACKTests {
         let fixture = Fixture()
         let executionCoordinator = FakeCaptionExecutionCoordinator(mode: .foregroundOnly)
         let pendingRunStore = FakePendingCaptionRunStore()
-        let viewModel = REPACKViewModel(
+        let viewModel = AppModel(
             engineFactory: fixture.factory,
             captionExecutionCoordinator: executionCoordinator,
             pendingRunStore: pendingRunStore
@@ -585,6 +588,44 @@ struct REPACKTests {
         #expect(!viewModel.hasPendingCaptionRun)
         #expect(executionCoordinator.completions == [true])
         #expect(!executionCoordinator.reportedProgress.isEmpty)
+    }
+
+    @Test("Cancelling captioning preserves setup and clears recovery metadata")
+    func cancellingCaptioningPreservesSetup() async throws {
+        let fixture = Fixture()
+        fixture.factory.visionState.captionDelay = .seconds(5)
+        let executionCoordinator = FakeCaptionExecutionCoordinator(mode: .foregroundOnly)
+        let pendingRunStore = FakePendingCaptionRunStore()
+        let viewModel = AppModel(
+            engineFactory: fixture.factory,
+            captionExecutionCoordinator: executionCoordinator,
+            pendingRunStore: pendingRunStore
+        )
+
+        await viewModel.selectModel(
+            LocalModel(url: fixture.modelURL, isBundled: false)
+        )
+        viewModel.selectedImageURL = fixture.imageURL
+        viewModel.promptChoice = .custom
+        viewModel.customPrompt = "Describe the package."
+        viewModel.sampleCount = 3
+        viewModel.threshold = 0.7
+        viewModel.startProcessing()
+        try await waitUntil { pendingRunStore.run != nil }
+
+        await viewModel.cancelProcessing()
+
+        #expect(viewModel.phase == .ready)
+        #expect(viewModel.modelURL == fixture.modelURL)
+        #expect(viewModel.selectedImageURL == fixture.imageURL)
+        #expect(viewModel.promptChoice == .custom)
+        #expect(viewModel.customPrompt == "Describe the package.")
+        #expect(viewModel.sampleCount == 3)
+        #expect(viewModel.threshold == 0.7)
+        #expect(viewModel.progress == nil)
+        #expect(pendingRunStore.run == nil)
+        #expect(!viewModel.hasPendingCaptionRun)
+        #expect(executionCoordinator.completions == [false])
     }
 
     @Test("Completed runs remain configurable while unchanged results stay available")
@@ -662,34 +703,6 @@ struct REPACKTests {
         #expect(!modelViewModel.hasCompletedResult)
     }
 
-    @Test("Structured atomization tool publishes one isolated array")
-    func structuredToolCapture() async throws {
-        let sink = AtomicStatementsSink()
-        var tool = SubmitAtomicStatementsTool()
-        tool.statements = [" A red can. ", "", "A red can.", "A logo is visible."]
-
-        _ = try await AtomicStatementsContext.$sink.withValue(sink) {
-            try await tool.run()
-        }
-
-        let captured = await sink.take()
-        #expect(captured.submissionCount == 1)
-        #expect(captured.statements == [" A red can. ", "", "A red can.", "A logo is visible."])
-    }
-
-    @Test("Structured atomization tool schema contains only statements")
-    func structuredToolSchema() throws {
-        let schema = SubmitAtomicStatementsTool().getSchema()
-        let function = try #require(schema["function"] as? [String: Any])
-        let parameters = try #require(function["parameters"] as? [String: Any])
-        let properties = try #require(parameters["properties"] as? [String: Any])
-        let statements = try #require(properties["statements"] as? [String: Any])
-
-        #expect(function["name"] as? String == "submit_atomic_statements")
-        #expect(Set(properties.keys) == ["statements"])
-        #expect(statements["type"] as? String == "array")
-    }
-
     @Test("List atomization parses JSON, normalizes statements, and tolerates fences")
     func atomizationListParsing() throws {
         let response = """
@@ -747,10 +760,10 @@ struct REPACKTests {
 
     @Test("List atomization rejects malformed and empty responses")
     func atomizationListParsingFailures() {
-        #expect(throws: StructuredAtomizationError.invalidListResponse) {
+        #expect(throws: AtomizationError.invalidListResponse) {
             try AtomizationListParser.parse("A red can.")
         }
-        #expect(throws: StructuredAtomizationError.invalidListResponse) {
+        #expect(throws: AtomizationError.invalidListResponse) {
             try AtomizationListParser.parse("[\"\", \"  \"]")
         }
     }
@@ -783,7 +796,7 @@ struct REPACKTests {
         var modelRepairCallCount = 0
         let result = try await AtomizationRecovery.resolve("not json") {
             modelRepairCallCount += 1
-            throw StructuredAtomizationError.invalidListResponse
+            throw AtomizationError.invalidListResponse
         }
 
         #expect(result.status == .unparseable)
@@ -800,102 +813,29 @@ struct REPACKTests {
         }
     }
 
-    @Test("Atomization retries a list parsing failure in a fresh attempt")
-    func atomizationListRetry() async throws {
-        var attempts: [Int] = []
-        let result: String = try await AtomizationRetryPolicy.run { attempt in
-            attempts.append(attempt)
-            if attempt == 0 {
-                throw StructuredAtomizationError.invalidListResponse
-            }
-            return "recovered"
-        }
-
-        #expect(result == "recovered")
-        #expect(attempts == [0, 1])
-    }
-
-    @Test("Atomization retries a native tool-call parse failure in a fresh attempt")
-    func atomizationToolCallRetry() async throws {
-        var attempts: [Int] = []
-        let result: String = try await AtomizationRetryPolicy.run { attempt in
-            attempts.append(attempt)
-            if attempt == 0 {
-                throw LiteRTLMError.conversation(
-                    .invalidResponse("Native sendMessage returned null.")
-                )
-            }
-            return "recovered"
-        }
-
-        #expect(result == "recovered")
-        #expect(attempts == [0, 1])
-        #expect(
-            AtomizationRetryPolicy.shouldRetry(
-                LiteRTLMError.conversation(
-                    .toolExecutionError(
-                        name: "submit_atomic",
-                        error: "Tool 'submit_atomic' not found."
-                    )
-                )
-            )
-        )
-    }
-
-    @Test("Atomization does not retry unrelated runtime failures")
-    func atomizationDoesNotRetryUnrelatedFailure() async {
-        var attemptCount = 0
-
-        await #expect(throws: StructuredAtomizationError.missingCaptureContext) {
-            let _: String = try await AtomizationRetryPolicy.run { _ in
-                attemptCount += 1
-                throw StructuredAtomizationError.missingCaptureContext
-            }
-        }
-
-        #expect(attemptCount == 1)
-    }
-
-    @Test("Atomization surfaces a tool-call parse failure after one retry")
-    func atomizationRetryLimit() async {
-        let failure = LiteRTLMError.conversation(
-            .invalidResponse("Native sendMessage returned null.")
-        )
-        var attemptCount = 0
-
-        await #expect(throws: failure) {
-            let _: String = try await AtomizationRetryPolicy.run { _ in
-                attemptCount += 1
-                throw failure
-            }
-        }
-
-        #expect(attemptCount == AtomizationRetryPolicy.maximumAttempts)
-    }
-
     @Test("Invalid inputs fail before inference")
     func validation() async throws {
         let fixture = Fixture()
-        let repack = try await REPACK(
+        let repack = try await REPACKPipeline(
             modelURL: fixture.modelURL,
             engineFactory: fixture.factory
         )
 
-        await #expect(throws: REPACKError.invalidSampleCount(0)) {
+        await #expect(throws: PipelineError.invalidSampleCount(0)) {
             try await repack.sample(
                 image: fixture.imageURL,
                 prompt: .describe,
                 count: 0
             )
         }
-        await #expect(throws: REPACKError.emptyPrompt) {
+        await #expect(throws: PipelineError.emptyPrompt) {
             try await repack.sample(
                 image: fixture.imageURL,
                 prompt: .custom(" \n"),
                 count: 1
             )
         }
-        await #expect(throws: REPACKError.invalidThreshold(1.1)) {
+        await #expect(throws: PipelineError.invalidThreshold(1.1)) {
             try await repack.process(
                 image: fixture.imageURL,
                 samplePrompt: .describe,
@@ -922,12 +862,12 @@ struct REPACKTests {
     }
 
     private func completedViewModel(
-        promptChoice: REPACKViewModel.PromptChoice = .describe,
+        promptChoice: AppModel.PromptChoice = .describe,
         customPrompt: String = "",
         sampleCount: Int = 2
-    ) async throws -> (Fixture, REPACKViewModel) {
+    ) async throws -> (Fixture, AppModel) {
         let fixture = Fixture()
-        let viewModel = REPACKViewModel(engineFactory: fixture.factory)
+        let viewModel = AppModel(engineFactory: fixture.factory)
 
         await viewModel.selectModel(
             LocalModel(url: fixture.modelURL, isBundled: false)
@@ -965,7 +905,7 @@ private struct Fixture {
 }
 
 @MainActor
-private final class FakeEngineFactory: REPACKEngineFactory {
+private final class FakeEngineFactory: EngineFactory {
     enum Event: Equatable {
         case validate
         case makeVision
@@ -986,7 +926,7 @@ private final class FakeEngineFactory: REPACKEngineFactory {
         validatedModelURLs.append(modelURL)
     }
 
-    func makeVisionEngine(modelURL: URL) async throws -> any REPACKInferenceEngine {
+    func makeVisionEngine(modelURL: URL) async throws -> any InferenceEngine {
         events.append(.makeVision)
         visionModelURLs.append(modelURL)
         let engine = FakeInferenceEngine(state: visionState)
@@ -994,7 +934,7 @@ private final class FakeEngineFactory: REPACKEngineFactory {
         return engine
     }
 
-    func makeTextEngine(modelURL: URL) async throws -> any REPACKInferenceEngine {
+    func makeTextEngine(modelURL: URL) async throws -> any InferenceEngine {
         events.append(.makeText)
         textModelURLs.append(modelURL)
         let engine = FakeInferenceEngine(state: textState)
@@ -1003,7 +943,7 @@ private final class FakeEngineFactory: REPACKEngineFactory {
     }
 }
 
-nonisolated private struct FixedMemoryProvider: REPACKMemoryProviding {
+nonisolated private struct FixedMemoryProvider: MemoryProviding {
     let bytes: UInt64
 
     func availableMemory() -> UInt64 {
@@ -1015,7 +955,7 @@ nonisolated private struct FixedMemoryProvider: REPACKMemoryProviding {
 private final class FakeEngineState {
     var captionResponses: [Int: String] = [:]
     var atomicResponses: [String: [String]] = [:]
-    var atomizationStatuses: [String: REPACKAtomizationStatus] = [:]
+    var atomizationStatuses: [String: AtomizationStatus] = [:]
     var captionSeeds: [Int] = []
     var atomizedCaptions: [String] = []
     var repackagedAtomics: [[String]] = []
@@ -1024,7 +964,7 @@ private final class FakeEngineState {
 }
 
 @MainActor
-private final class FakeInferenceEngine: REPACKInferenceEngine {
+private final class FakeInferenceEngine: InferenceEngine {
     let state: FakeEngineState
 
     init(state: FakeEngineState) {
@@ -1039,9 +979,9 @@ private final class FakeInferenceEngine: REPACKInferenceEngine {
         return state.captionResponses[seed] ?? "caption \(seed)"
     }
 
-    func atomize(caption: String) async throws -> REPACKAtomizationResult {
+    func atomize(caption: String) async throws -> AtomizationResult {
         state.atomizedCaptions.append(caption)
-        return REPACKAtomizationResult(
+        return AtomizationResult(
             statements: state.atomicResponses[caption] ?? [caption],
             status: state.atomizationStatuses[caption] ?? .parsed
         )
@@ -1060,7 +1000,7 @@ private final class FakeInferenceEngine: REPACKInferenceEngine {
 @MainActor
 private final class FakeCaptionExecutionCoordinator: CaptionExecutionCoordinating {
     let mode: CaptionExecutionMode
-    var reportedProgress: [REPACKProgress] = []
+    var reportedProgress: [PipelineProgress] = []
     var completions: [Bool] = []
     private var expirationHandler: (@MainActor () -> Void)?
     private var isActive = false
@@ -1083,7 +1023,7 @@ private final class FakeCaptionExecutionCoordinator: CaptionExecutionCoordinatin
         return mode
     }
 
-    func report(_ progress: REPACKProgress) {
+    func report(_ progress: PipelineProgress) {
         reportedProgress.append(progress)
     }
 
@@ -1115,7 +1055,7 @@ private final class FakePendingCaptionRunStore: PendingCaptionRunStoring {
 private actor LifecycleModelDownloadService: ModelDownloadServicing {
     enum Mode: Sendable {
         case waitForCancellation
-        case complete(ModelDownloadOutcome)
+        case complete(DownloadOutcome)
     }
 
     let mode: Mode
@@ -1126,18 +1066,18 @@ private actor LifecycleModelDownloadService: ModelDownloadServicing {
 
     func preparePlan(
         for model: DownloadableModel,
-        validatesWithoutKeepingFiles: Bool
-    ) -> ModelDownloadPlan {
-        modelDownloadPlan(validatesWithoutKeepingFiles: validatesWithoutKeepingFiles)
+        policy: DownloadPolicy
+    ) -> DownloadPlan {
+        modelDownloadPlan(policy: policy)
     }
 
     func execute(
-        _ plan: ModelDownloadPlan,
-        progressHandler: @escaping @Sendable (ModelDownloadProgress) async -> Void
-    ) async throws -> ModelDownloadOutcome {
+        _ plan: DownloadPlan,
+        progressHandler: @escaping @Sendable (DownloadProgress) async -> Void
+    ) async throws -> DownloadOutcome {
         if let descriptor = plan.files.first {
             await progressHandler(
-                ModelDownloadProgress(
+                DownloadProgress(
                     requestedModel: plan.requestedModel,
                     currentModel: descriptor.model,
                     fileIndex: 1,
@@ -1179,7 +1119,7 @@ private final class FakeModelDownloadExecutionCoordinator:
         return .backgroundProtected
     }
 
-    func report(_ progress: ModelDownloadProgress) {}
+    func report(_ progress: DownloadProgress) {}
 
     func complete(success: Bool) {}
 }
@@ -1194,17 +1134,17 @@ private final class FakeModelDownloadNotifier: ModelDownloadNotifying {
 }
 
 nonisolated private func modelDownloadPlan(
-    validatesWithoutKeepingFiles: Bool = false
-) -> ModelDownloadPlan {
-    ModelDownloadPlan(
+    policy: DownloadPolicy = .install
+) -> DownloadPlan {
+    DownloadPlan(
         requestedModel: .e2b,
         files: [
-            ModelDownloadFile(
+            DownloadFile(
                 descriptor: DownloadableModel.e2b.descriptor,
                 byteCount: 3
             )
         ],
         dependencyAlreadyInstalled: false,
-        validatesWithoutKeepingFiles: validatesWithoutKeepingFiles
+        policy: policy
     )
 }

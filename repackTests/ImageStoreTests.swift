@@ -96,7 +96,7 @@ struct ImageStoreTests {
     func modelImageLifecycle() async throws {
         let fixture = try Fixture()
         defer { fixture.removeDirectory() }
-        let model = REPACKViewModel(
+        let model = AppModel(
             imageStore: fixture.store,
             pendingRunStore: TestPendingCaptionRunStore()
         )
@@ -151,7 +151,7 @@ struct ImageStoreTests {
             sampleCount: 7,
             threshold: 0.65
         )
-        let model = REPACKViewModel(
+        let model = AppModel(
             imageStore: fixture.store,
             pendingRunStore: pendingRunStore
         )
@@ -195,7 +195,7 @@ struct ImageStoreTests {
             sampleCount: 5,
             threshold: 0.5
         )
-        let model = REPACKViewModel(
+        let model = AppModel(
             imageStore: fixture.store,
             pendingRunStore: pendingRunStore
         )
@@ -208,8 +208,8 @@ struct ImageStoreTests {
         #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
     }
 
-    private var completedResult: REPACKResult {
-        REPACKResult(
+    private var completedResult: CaptionResult {
+        CaptionResult(
             captions: [],
             atomizedCaptions: [],
             scoredAtomics: [],

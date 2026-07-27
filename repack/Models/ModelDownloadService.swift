@@ -1,158 +1,5 @@
 import CryptoKit
 import Foundation
-import HuggingFace
-import Xet
-
-nonisolated protocol ModelHubDownloading: Sendable {
-    func fileSize(for descriptor: ApprovedModelDescriptor) async throws -> Int64
-
-    func download(
-        _ descriptor: ApprovedModelDescriptor,
-        byteCount: Int64,
-        to destination: URL,
-        progressHandler: @escaping @Sendable (Double) async -> Void
-    ) async throws -> URL
-
-    func cancelDownload() async
-}
-
-actor SwiftHuggingFaceModelHub: ModelHubDownloading {
-    private let client: HubClient
-    private var activeDownloader: XetDownloader?
-
-    init(client: HubClient = HubClient(cache: nil)) {
-        self.client = client
-    }
-
-    func fileSize(for descriptor: ApprovedModelDescriptor) async throws -> Int64 {
-        let files = try await client.listFiles(
-            in: repositoryID(for: descriptor),
-            kind: .model,
-            revision: descriptor.revision,
-            recursive: true
-        )
-        guard
-            let size = files.first(where: { $0.path == descriptor.fileName })?.size,
-            size > 0
-        else {
-            throw ModelDownloadError.missingFileMetadata(model: descriptor.model)
-        }
-        return Int64(size)
-    }
-
-    func download(
-        _ descriptor: ApprovedModelDescriptor,
-        byteCount: Int64,
-        to destination: URL,
-        progressHandler: @escaping @Sendable (Double) async -> Void
-    ) async throws -> URL {
-        let packageProgress = Progress(totalUnitCount: 0)
-        let downloader = XetDownloader(
-            refreshURL: xetRefreshURL(for: descriptor)
-        )
-        activeDownloader = downloader
-
-        // TODO: Bind the determinate UI directly to Hugging Face Progress and
-        // remove destination-size inference once
-        // https://github.com/huggingface/swift-huggingface/issues/48 is fixed.
-        let monitor = Task<Void, Never> {
-            var lastReportedFraction = 0.0
-            while !Task.isCancelled {
-                let inferredFraction = Self.inferredProgress(
-                    at: destination,
-                    expectedByteCount: byteCount
-                )
-                let fraction = min(
-                    max(inferredFraction, packageProgress.fractionCompleted),
-                    0.999
-                )
-                if fraction > lastReportedFraction {
-                    lastReportedFraction = fraction
-                    await progressHandler(fraction)
-                }
-
-                do {
-                    try await Task.sleep(for: .milliseconds(500))
-                } catch {
-                    return
-                }
-            }
-        }
-
-        // TODO: this is because swift-xet/swift-huggingface do not expose the downloader and prevents us from canceling in-progress downloads.
-        // once fixed upstream, then use HubClient.downloadFile.
-        do {
-            _ = try await withTaskCancellationHandler {
-                try await downloader.download(
-                    descriptor.xetHash,
-                    to: destination
-                )
-            } onCancel: { [weak self] in
-                Task {
-                    await self?.cancelDownload()
-                }
-            }
-            try Task.checkCancellation()
-            try await downloader.shutdown()
-            activeDownloader = nil
-            monitor.cancel()
-            await monitor.value
-            await progressHandler(1)
-            return destination
-        } catch {
-            try? await downloader.shutdown()
-            activeDownloader = nil
-            monitor.cancel()
-            await monitor.value
-            if Task.isCancelled {
-                throw CancellationError()
-            }
-            throw error
-        }
-    }
-
-    func cancelDownload() async {
-        guard let activeDownloader else { return }
-        self.activeDownloader = nil
-        try? await activeDownloader.shutdown()
-    }
-
-    static func inferredProgress(
-        at destination: URL,
-        expectedByteCount: Int64,
-        fileManager: FileManager = .default
-    ) -> Double {
-        guard expectedByteCount > 0,
-            let attributes = try? fileManager.attributesOfItem(atPath: destination.path),
-            let fileSize = attributes[.size] as? NSNumber
-        else {
-            return 0
-        }
-
-        return min(max(Double(fileSize.int64Value) / Double(expectedByteCount), 0), 1)
-    }
-
-    private func repositoryID(
-        for descriptor: ApprovedModelDescriptor
-    ) -> Repo.ID {
-        Repo.ID(
-            namespace: descriptor.repositoryNamespace,
-            name: descriptor.repositoryName
-        )
-    }
-
-    private func xetRefreshURL(
-        for descriptor: ApprovedModelDescriptor
-    ) -> URL {
-        URL(string: "https://huggingface.co")!
-            .appending(path: "api")
-            .appending(path: "models")
-            .appending(path: descriptor.repositoryNamespace)
-            .appending(path: descriptor.repositoryName)
-            .appending(path: "xet-read-token")
-            .appending(path: descriptor.revision)
-    }
-}
 
 nonisolated protocol ModelStorageCapacityProviding: Sendable {
     func availableCapacity(at directory: URL) throws -> Int64?
@@ -170,13 +17,13 @@ nonisolated struct VolumeModelStorageCapacityProvider: ModelStorageCapacityProvi
 nonisolated protocol ModelDownloadServicing: Sendable {
     func preparePlan(
         for model: DownloadableModel,
-        validatesWithoutKeepingFiles: Bool
-    ) async throws -> ModelDownloadPlan
+        policy: DownloadPolicy
+    ) async throws -> DownloadPlan
 
     func execute(
-        _ plan: ModelDownloadPlan,
-        progressHandler: @escaping @Sendable (ModelDownloadProgress) async -> Void
-    ) async throws -> ModelDownloadOutcome
+        _ plan: DownloadPlan,
+        progressHandler: @escaping @Sendable (DownloadProgress) async -> Void
+    ) async throws -> DownloadOutcome
 
     func isInstalled(_ model: DownloadableModel) async -> Bool
     func cancelCurrentDownload() async
@@ -206,35 +53,35 @@ actor ModelDownloadService: ModelDownloadServicing {
 
     func preparePlan(
         for model: DownloadableModel,
-        validatesWithoutKeepingFiles: Bool
-    ) async throws -> ModelDownloadPlan {
+        policy: DownloadPolicy
+    ) async throws -> DownloadPlan {
         let dependencyAlreadyInstalled =
             model == .e4b
-            && !validatesWithoutKeepingFiles
+            && policy == .install
             && isInstalledFile(.e2b)
 
-        let requiredModels = model.dependencyClosure.filter {
-            validatesWithoutKeepingFiles || !isInstalledFile($0)
+        let requiredModels = model.dependencyOrder.filter {
+            policy == .validateAndRemove || !isInstalledFile($0)
         }
-        var files: [ModelDownloadFile] = []
+        var files: [DownloadFile] = []
         files.reserveCapacity(requiredModels.count)
 
         for requiredModel in requiredModels {
             let descriptor = requiredModel.descriptor
             let byteCount = try await hub.fileSize(for: descriptor)
             files.append(
-                ModelDownloadFile(
+                DownloadFile(
                     descriptor: descriptor,
                     byteCount: byteCount
                 )
             )
         }
 
-        let plan = ModelDownloadPlan(
+        let plan = DownloadPlan(
             requestedModel: model,
             files: files,
             dependencyAlreadyInstalled: dependencyAlreadyInstalled,
-            validatesWithoutKeepingFiles: validatesWithoutKeepingFiles
+            policy: policy
         )
         if !files.isEmpty {
             try checkAvailableCapacity(requiredBytes: plan.totalBytes)
@@ -243,9 +90,9 @@ actor ModelDownloadService: ModelDownloadServicing {
     }
 
     func execute(
-        _ plan: ModelDownloadPlan,
-        progressHandler: @escaping @Sendable (ModelDownloadProgress) async -> Void
-    ) async throws -> ModelDownloadOutcome {
+        _ plan: DownloadPlan,
+        progressHandler: @escaping @Sendable (DownloadProgress) async -> Void
+    ) async throws -> DownloadOutcome {
         guard !plan.files.isEmpty else {
             return .installed(
                 try modelsDirectory().appending(path: plan.requestedModel.fileName)
@@ -266,7 +113,7 @@ actor ModelDownloadService: ModelDownloadServicing {
         }
 
         var completedBytes: Int64 = 0
-        var validatedDownloads: [(ApprovedModelDescriptor, URL)] = []
+        var validatedDownloads: [(ModelDescriptor, URL)] = []
         var installedRequestedModelURL: URL?
 
         for (offset, file) in plan.files.enumerated() {
@@ -295,7 +142,7 @@ actor ModelDownloadService: ModelDownloadServicing {
                         .rounded(.down)
                 )
                 await progressHandler(
-                    ModelDownloadProgress(
+                    DownloadProgress(
                         requestedModel: plan.requestedModel,
                         currentModel: descriptor.model,
                         fileIndex: offset + 1,
@@ -309,7 +156,7 @@ actor ModelDownloadService: ModelDownloadServicing {
             try await validateChecksum(downloadedURL, against: descriptor)
             completedBytes += file.byteCount
 
-            if plan.validatesWithoutKeepingFiles {
+            if plan.policy == .validateAndRemove {
                 try fileManager.removeItem(at: downloadedURL)
             } else {
                 validatedDownloads.append((descriptor, downloadedURL))
@@ -325,7 +172,7 @@ actor ModelDownloadService: ModelDownloadServicing {
             )
         }
 
-        if plan.validatesWithoutKeepingFiles {
+        if plan.policy == .validateAndRemove {
             return .validatedAndRemoved
         }
 
@@ -345,7 +192,7 @@ actor ModelDownloadService: ModelDownloadServicing {
         let installedURL = try modelsDirectory()
             .appending(path: plan.requestedModel.fileName)
         guard isInstalledFile(plan.requestedModel) else {
-            throw ModelDownloadError.missingDownloadedFile
+            throw DownloadError.missingDownloadedFile
         }
         return .installed(installedURL)
     }
@@ -369,12 +216,12 @@ actor ModelDownloadService: ModelDownloadServicing {
     }
 
     private func progress(
-        for plan: ModelDownloadPlan,
+        for plan: DownloadPlan,
         currentModel: DownloadableModel,
         fileIndex: Int,
         completedBytes: Int64
-    ) -> ModelDownloadProgress {
-        ModelDownloadProgress(
+    ) -> DownloadProgress {
+        DownloadProgress(
             requestedModel: plan.requestedModel,
             currentModel: currentModel,
             fileIndex: fileIndex,
@@ -386,11 +233,11 @@ actor ModelDownloadService: ModelDownloadServicing {
 
     private func validateChecksum(
         _ fileURL: URL,
-        against descriptor: ApprovedModelDescriptor
+        against descriptor: ModelDescriptor
     ) async throws {
         let digest = try await sha256(of: fileURL)
         guard digest == descriptor.sha256 else {
-            throw ModelDownloadError.invalidChecksum(model: descriptor.model)
+            throw DownloadError.invalidChecksum(model: descriptor.model)
         }
     }
 
@@ -416,7 +263,7 @@ actor ModelDownloadService: ModelDownloadServicing {
 
     private func promote(
         _ stagedURL: URL,
-        descriptor: ApprovedModelDescriptor
+        descriptor: ModelDescriptor
     ) throws -> URL {
         let destination = try modelsDirectory()
             .appending(path: descriptor.fileName)
@@ -440,7 +287,7 @@ actor ModelDownloadService: ModelDownloadServicing {
         let directory = try appSupportDirectory()
         if let available = try capacityProvider.availableCapacity(at: directory),
             available < requiredBytes + Self.capacityHeadroom {
-            throw ModelDownloadError.insufficientSpace(
+            throw DownloadError.insufficientSpace(
                 requiredBytes: requiredBytes,
                 availableBytes: available
             )
@@ -455,7 +302,7 @@ actor ModelDownloadService: ModelDownloadServicing {
             )
             return baseDirectory
         }
-        return try ModelManager.applicationSupportDirectory()
+        return try ModelLibrary.applicationSupportDirectory()
     }
 
     private func modelsDirectory() throws -> URL {
@@ -488,7 +335,7 @@ actor ModelDownloadService: ModelDownloadServicing {
     }
 }
 
-nonisolated enum ModelDownloadError: LocalizedError, Equatable {
+nonisolated enum DownloadError: LocalizedError, Equatable {
     case insufficientSpace(requiredBytes: Int64, availableBytes: Int64)
     case missingFileMetadata(model: DownloadableModel)
     case invalidChecksum(model: DownloadableModel)

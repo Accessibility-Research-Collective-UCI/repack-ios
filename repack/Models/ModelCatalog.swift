@@ -36,10 +36,10 @@ nonisolated enum DownloadableModel:
         .onDevice
     }
 
-    var descriptor: ApprovedModelDescriptor {
+    var descriptor: ModelDescriptor {
         switch self {
         case .e2b:
-            ApprovedModelDescriptor(
+            ModelDescriptor(
                 model: self,
                 repositoryNamespace: "litert-community",
                 repositoryName: "gemma-4-E2B-it-litert-lm",
@@ -50,7 +50,7 @@ nonisolated enum DownloadableModel:
                 dependencies: []
             )
         case .e4b:
-            ApprovedModelDescriptor(
+            ModelDescriptor(
                 model: self,
                 repositoryNamespace: "litert-community",
                 repositoryName: "gemma-4-E4B-it-litert-lm",
@@ -61,10 +61,6 @@ nonisolated enum DownloadableModel:
                 dependencies: [.e2b]
             )
         }
-    }
-
-    var repository: String {
-        "\(descriptor.repositoryNamespace)/\(descriptor.repositoryName)"
     }
 
     var fileName: String {
@@ -97,17 +93,22 @@ nonisolated enum DownloadableModel:
         DownloadableModel(modelURL: modelURL)?.executionLocation ?? .onDevice
     }
 
-    var dependencyClosure: [DownloadableModel] {
-        switch self {
-        case .e2b:
-            [.e2b]
-        case .e4b:
-            [.e2b, .e4b]
+    var dependencyOrder: [DownloadableModel] {
+        var ordered: [DownloadableModel] = []
+        var visited = Set<DownloadableModel>()
+
+        func append(_ model: DownloadableModel) {
+            guard visited.insert(model).inserted else { return }
+            model.descriptor.dependencies.forEach(append)
+            ordered.append(model)
         }
+
+        append(self)
+        return ordered
     }
 }
 
-nonisolated struct ApprovedModelDescriptor: Identifiable, Equatable, Sendable {
+nonisolated struct ModelDescriptor: Identifiable, Equatable, Sendable {
     let model: DownloadableModel
     let repositoryNamespace: String
     let repositoryName: String
@@ -120,33 +121,38 @@ nonisolated struct ApprovedModelDescriptor: Identifiable, Equatable, Sendable {
     var id: DownloadableModel { model }
 }
 
-nonisolated struct ModelDownloadFile: Identifiable, Equatable, Sendable {
-    let descriptor: ApprovedModelDescriptor
+nonisolated struct DownloadFile: Identifiable, Equatable, Sendable {
+    let descriptor: ModelDescriptor
     let byteCount: Int64
 
     var id: DownloadableModel { descriptor.model }
     var model: DownloadableModel { descriptor.model }
 }
 
-nonisolated struct ModelDownloadPlan: Identifiable, Equatable, Sendable {
+nonisolated enum DownloadPolicy: Equatable, Sendable {
+    case install
+    case validateAndRemove
+}
+
+nonisolated struct DownloadPlan: Identifiable, Equatable, Sendable {
     let id: UUID
     let requestedModel: DownloadableModel
-    let files: [ModelDownloadFile]
+    let files: [DownloadFile]
     let dependencyAlreadyInstalled: Bool
-    let validatesWithoutKeepingFiles: Bool
+    let policy: DownloadPolicy
 
     init(
         id: UUID = UUID(),
         requestedModel: DownloadableModel,
-        files: [ModelDownloadFile],
+        files: [DownloadFile],
         dependencyAlreadyInstalled: Bool,
-        validatesWithoutKeepingFiles: Bool
+        policy: DownloadPolicy
     ) {
         self.id = id
         self.requestedModel = requestedModel
         self.files = files
         self.dependencyAlreadyInstalled = dependencyAlreadyInstalled
-        self.validatesWithoutKeepingFiles = validatesWithoutKeepingFiles
+        self.policy = policy
     }
 
     var totalBytes: Int64 {
@@ -163,7 +169,7 @@ nonisolated struct ModelDownloadPlan: Identifiable, Equatable, Sendable {
 
     var confirmationMessage: String {
         if requestedModel == .e4b, files.contains(where: { $0.model == .e2b }) {
-            if validatesWithoutKeepingFiles {
+            if policy == .validateAndRemove {
                 return String(
                     localized:
                         "DEBUG: Gemma 4 E4B also requires Gemma 4 E2B. Both models will be downloaded in order and temporarily use approximately \(formattedTotalSize). The downloaded test files will be deleted after validation."
@@ -182,7 +188,7 @@ nonisolated struct ModelDownloadPlan: Identifiable, Equatable, Sendable {
             )
         }
 
-        if validatesWithoutKeepingFiles {
+        if policy == .validateAndRemove {
             return String(
                 localized:
                     "DEBUG: This download will temporarily use approximately \(formattedTotalSize). The downloaded test file will be deleted after validation."
@@ -196,7 +202,7 @@ nonisolated struct ModelDownloadPlan: Identifiable, Equatable, Sendable {
     }
 }
 
-nonisolated struct ModelDownloadProgress: Equatable, Sendable {
+nonisolated struct DownloadProgress: Equatable, Sendable {
     let requestedModel: DownloadableModel
     let currentModel: DownloadableModel
     let fileIndex: Int
@@ -235,7 +241,7 @@ nonisolated struct ModelDownloadProgress: Equatable, Sendable {
     }
 }
 
-nonisolated enum ModelDownloadOutcome: Equatable, Sendable {
+nonisolated enum DownloadOutcome: Equatable, Sendable {
     case installed(URL)
     case validatedAndRemoved
 }

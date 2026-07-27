@@ -266,7 +266,7 @@ actor ImageStore {
         let directory = if let customDirectoryURL {
             customDirectoryURL
         } else {
-            try ModelManager.applicationSupportDirectory()
+            try ModelLibrary.applicationSupportDirectory()
                 .appending(path: "Images", directoryHint: .isDirectory)
         }
 

@@ -1,27 +1,28 @@
 import Foundation
 
 @MainActor
-final class REPACK {
-    typealias ProgressHandler = @MainActor (REPACKProgress) -> Void
+final class REPACKPipeline {
+    typealias ProgressHandler = @MainActor (PipelineProgress) -> Void
 
     private let samplingModelURL: URL
     private let processingModelURL: URL
-    private let engineFactory: any REPACKEngineFactory
-    private let devicePolicy: REPACKDevicePolicy
-    private let memoryProvider: any REPACKMemoryProviding
+    private let engineFactory: any EngineFactory
+    private let scorer: any CaptionScorer
+    private let devicePolicy: DevicePolicy
+    private let memoryProvider: any MemoryProviding
     private let clock = ContinuousClock()
 
-    private var samplingEngine: (any REPACKInferenceEngine)?
-    private var processingEngine: (any REPACKInferenceEngine)?
+    private var samplingEngine: (any InferenceEngine)?
+    private var processingEngine: (any InferenceEngine)?
     private var usesSequentialEngineLoading = false
-    private var cachedResult: REPACKResult?
+    private var cachedResult: CaptionResult?
     private var progressHandler: ProgressHandler?
 
     convenience init(modelURL: URL) async throws {
         try await self.init(
             samplingModelURL: modelURL,
             processingModelURL: modelURL,
-            engineFactory: LiteRTREPACKEngineFactory.shared
+            engineFactory: LiteRTEngineFactory.shared
         )
     }
 
@@ -32,13 +33,13 @@ final class REPACK {
         try await self.init(
             samplingModelURL: samplingModelURL,
             processingModelURL: processingModelURL,
-            engineFactory: LiteRTREPACKEngineFactory.shared
+            engineFactory: LiteRTEngineFactory.shared
         )
     }
 
     convenience init(
         modelURL: URL,
-        engineFactory: any REPACKEngineFactory
+        engineFactory: any EngineFactory
     ) async throws {
         try await self.init(
             samplingModelURL: modelURL,
@@ -50,30 +51,32 @@ final class REPACK {
     init(
         samplingModelURL: URL,
         processingModelURL: URL,
-        engineFactory: any REPACKEngineFactory,
-        devicePolicy: REPACKDevicePolicy = .current,
-        memoryProvider: any REPACKMemoryProviding = SystemREPACKMemoryProvider()
+        engineFactory: any EngineFactory,
+        devicePolicy: DevicePolicy = .current,
+        memoryProvider: any MemoryProviding = SystemMemoryProvider(),
+        scorer: any CaptionScorer = BLEUCaptionScorer()
     ) async throws {
         self.samplingModelURL = samplingModelURL
         self.processingModelURL = processingModelURL
         self.engineFactory = engineFactory
         self.devicePolicy = devicePolicy
         self.memoryProvider = memoryProvider
+        self.scorer = scorer
 
-        REPACKMemoryDiagnostics.log("Before REPACK engine initialization")
+        MemoryDiagnostics.log("Before REPACK engine initialization")
         debugLog(
             "Device \(devicePolicy.modelIdentifier) uses E4B policy "
                 + "\(String(describing: devicePolicy.e4BMode))."
         )
-        if ModelManager.isE4B(samplingModelURL), !devicePolicy.allowsE4B {
-            throw REPACKError.e4BUnavailableOnDevice
+        if ModelLibrary.isE4B(samplingModelURL), !devicePolicy.allowsE4B {
+            throw PipelineError.e4BUnavailableOnDevice
         }
 
         try engineFactory.validateModel(at: samplingModelURL)
         samplingEngine = try await engineFactory.makeVisionEngine(modelURL: samplingModelURL)
-        REPACKMemoryDiagnostics.log("Sampling engine ready")
+        MemoryDiagnostics.log("Sampling engine ready")
 
-        if ModelManager.sameFile(samplingModelURL, processingModelURL) {
+        if ModelLibrary.sameFile(samplingModelURL, processingModelURL) {
             processingEngine = try await engineFactory.makeTextEngine(
                 modelURL: processingModelURL
             )
@@ -83,13 +86,13 @@ final class REPACK {
             let shouldKeepBothEnginesResident: Bool
             switch devicePolicy.e4BMode {
             case .unavailable:
-                throw REPACKError.e4BUnavailableOnDevice
+                throw PipelineError.e4BUnavailableOnDevice
             case .resident:
                 shouldKeepBothEnginesResident = true
             case .adaptive:
                 let availableMemory = memoryProvider.availableMemory()
                 shouldKeepBothEnginesResident =
-                    availableMemory >= REPACKDevicePolicy.minimumAvailableForResidentEngines
+                    availableMemory >= DevicePolicy.minimumAvailableForResidentEngines
                 debugLog(
                     "Adaptive engine policy found "
                         + "\(availableMemory.formatted(.byteCount(style: .memory))) available."
@@ -111,50 +114,50 @@ final class REPACK {
                 )
             }
         }
-        REPACKMemoryDiagnostics.log("REPACK engine initialization complete")
+        MemoryDiagnostics.log("REPACK engine initialization complete")
     }
 
     deinit {
-        REPACKMemoryDiagnostics.log("REPACK deinitializing")
+        MemoryDiagnostics.log("REPACK deinitializing")
     }
 }
 
-extension REPACK {
+extension REPACKPipeline {
     func process(
         image: URL,
-        samplePrompt: REPACKPrompt,
+        samplePrompt: CaptionPrompt,
         sampleCount: Int,
         threshold: Double,
         progress: ProgressHandler? = nil
-    ) async throws -> REPACKResult {
+    ) async throws -> CaptionResult {
         try validate(threshold: threshold)
         cachedResult = nil
         progressHandler = progress
         defer { progressHandler = nil }
-        REPACKMemoryDiagnostics.log("Process started")
+        MemoryDiagnostics.log("Process started")
 
-        var timings: [REPACKStageTiming] = []
+        var timings: [StageTiming] = []
 
         let samplingStart = clock.now
         let captions = try await sample(image: image, prompt: samplePrompt, count: sampleCount)
-        let samplingTiming = REPACKStageTiming(
+        let samplingTiming = StageTiming(
             stage: .sampling,
             duration: samplingStart.duration(to: clock.now)
         )
         timings.append(samplingTiming)
         debugLog("Sampling complete in \(samplingTiming.duration).")
-        REPACKMemoryDiagnostics.log("Sampling stage complete")
+        MemoryDiagnostics.log("Sampling stage complete")
 
         let atomizingStart = clock.now
         let atomizedCaptions = try await atomize(captions: captions)
         let resultCaptions = atomizedCaptions.map(\.caption)
-        let atomizingTiming = REPACKStageTiming(
+        let atomizingTiming = StageTiming(
             stage: .atomizing,
             duration: atomizingStart.duration(to: clock.now)
         )
         timings.append(atomizingTiming)
         debugLog("Atomization complete in \(atomizingTiming.duration).")
-        REPACKMemoryDiagnostics.log("Atomization stage complete")
+        MemoryDiagnostics.log("Atomization stage complete")
 
         let scoredAtomics = try await score(
             atomizedCaptions: atomizedCaptions,
@@ -168,15 +171,15 @@ extension REPACK {
             threshold: threshold
         )
         try Task.checkCancellation()
-        let repackagingTiming = REPACKStageTiming(
+        let repackagingTiming = StageTiming(
             stage: .repackaging,
             duration: repackagingStart.duration(to: clock.now)
         )
         timings.append(repackagingTiming)
         debugLog("Repackaging complete in \(repackagingTiming.duration).")
-        REPACKMemoryDiagnostics.log("Repackaging stage complete")
+        MemoryDiagnostics.log("Repackaging stage complete")
 
-        let result = REPACKResult(
+        let result = CaptionResult(
             captions: resultCaptions,
             atomizedCaptions: atomizedCaptions,
             scoredAtomics: scoredAtomics,
@@ -186,30 +189,30 @@ extension REPACK {
             timings: timings
         )
         cachedResult = result
-        REPACKMemoryDiagnostics.log("Process complete")
+        MemoryDiagnostics.log("Process complete")
         return result
     }
 
     func sample(
         image: URL,
-        prompt: REPACKPrompt,
+        prompt: CaptionPrompt,
         count: Int
-    ) async throws -> [REPACKCaption] {
+    ) async throws -> [CaptionSample] {
         guard 1...10 ~= count else {
-            throw REPACKError.invalidSampleCount(count)
+            throw PipelineError.invalidSampleCount(count)
         }
 
         let promptText = prompt.resolvedText
         guard !promptText.isEmpty else {
-            throw REPACKError.emptyPrompt
+            throw PipelineError.emptyPrompt
         }
 
         try await prepareSamplingEngineIfNeeded()
         guard let samplingEngine else {
-            throw REPACKError.missingVisionEngine
+            throw PipelineError.missingVisionEngine
         }
 
-        var captions: [REPACKCaption] = []
+        var captions: [CaptionSample] = []
         captions.reserveCapacity(count + 1)
         let total = count + 1
 
@@ -222,7 +225,7 @@ extension REPACK {
                 prompt: promptText,
                 seed: seed
             )
-            let caption = REPACKCaption(
+            let caption = CaptionSample(
                 index: index,
                 kind: index == 0 ? .reference : .sample,
                 text: try nonempty(text)
@@ -232,17 +235,17 @@ extension REPACK {
                 "Caption \(caption.index) [\(caption.kind == .reference ? "reference" : "sample"), "
                     + "seed \(seed)]:\n\(caption.text)"
             )
-            REPACKMemoryDiagnostics.log("Generated caption \(caption.index) of \(total - 1)")
+            MemoryDiagnostics.log("Generated caption \(caption.index) of \(total - 1)")
             emit(.sampling(completed: captions.count, total: total))
         }
 
         return captions
     }
 
-    func atomize(caption: String) async throws -> REPACKAtomizationResult {
+    func atomize(caption: String) async throws -> AtomizationResult {
         try await prepareProcessingEngineIfNeeded()
         guard let processingEngine else {
-            throw REPACKError.missingTextEngine
+            throw PipelineError.missingTextEngine
         }
         return try await processingEngine.atomize(caption: caption)
     }
@@ -250,63 +253,20 @@ extension REPACK {
     func score(
         referenceAtoms: [String],
         sampleAtoms: [[String]]
-    ) async throws -> [REPACKScoredAtomic] {
-        var results: [REPACKScoredAtomic] = []
-        results.reserveCapacity(referenceAtoms.count)
-
-        for (referenceIndex, referenceAtomic) in referenceAtoms.enumerated() {
-            try Task.checkCancellation()
-            emit(.scoring(completed: referenceIndex, total: referenceAtoms.count))
-
-            var matches: [REPACKAtomicMatch] = []
-            matches.reserveCapacity(sampleAtoms.count)
-
-            for (sampleOffset, atoms) in sampleAtoms.enumerated() {
-                var bestStatement: String?
-                var bestScore = 0.0
-
-                for atom in atoms {
-                    let similarity = try await BLEU.compute(
-                        candidate: referenceAtomic,
-                        references: [atom]
-                    ).bleu
-
-                    if bestStatement == nil || similarity > bestScore {
-                        bestStatement = atom
-                        bestScore = similarity
-                    }
-                }
-
-                matches.append(
-                    REPACKAtomicMatch(
-                        sampleIndex: sampleOffset + 1,
-                        statement: bestStatement,
-                        score: bestScore
-                    )
-                )
-            }
-
-            let average = matches.isEmpty
-                ? 0
-                : matches.reduce(0) { $0 + $1.score } / Double(matches.count)
-
-            let scoredAtomic = REPACKScoredAtomic(
-                index: referenceIndex,
-                statement: referenceAtomic,
-                matches: matches,
-                averageScore: average
-            )
-            results.append(scoredAtomic)
-            debugLog(scoredAtomic.debugDescription)
-            emit(.scoring(completed: results.count, total: referenceAtoms.count))
+    ) async throws -> [ScoredAtomic] {
+        let results = try await scorer.score(
+            referenceAtomics: referenceAtoms,
+            sampleAtomics: sampleAtoms
+        ) { [weak self] completed, total in
+            self?.emit(.scoring(completed: completed, total: total))
         }
-
+        results.forEach { debugLog($0.debugDescription) }
         debugLog("BLEU scoring complete for \(results.count) reference atomics.")
         return results
     }
 
     func repackage(
-        referenceAtomsAndScores: [REPACKScoredAtomic],
+        referenceAtomsAndScores: [ScoredAtomic],
         threshold: Double
     ) async throws -> String {
         try validate(threshold: threshold)
@@ -330,7 +290,7 @@ extension REPACK {
 
         try await prepareProcessingEngineIfNeeded()
         guard let processingEngine else {
-            throw REPACKError.missingTextEngine
+            throw PipelineError.missingTextEngine
         }
 
         let caption = try nonempty(try await processingEngine.repackage(atomics: retained))
@@ -338,10 +298,10 @@ extension REPACK {
         return caption
     }
 
-    func regenerateCaption(threshold: Double) async throws -> REPACKResult {
+    func regenerateCaption(threshold: Double) async throws -> CaptionResult {
         try validate(threshold: threshold)
         guard let cachedResult else {
-            throw REPACKError.noCachedResult
+            throw PipelineError.noCachedResult
         }
 
         let retained = retainedAtomics(
@@ -349,7 +309,7 @@ extension REPACK {
             threshold: threshold
         )
         let start = clock.now
-        REPACKMemoryDiagnostics.log("Threshold regeneration started")
+        MemoryDiagnostics.log("Threshold regeneration started")
         let caption = try await repackage(
             referenceAtomsAndScores: cachedResult.scoredAtomics,
             threshold: threshold
@@ -366,7 +326,7 @@ extension REPACK {
             "Threshold regeneration complete at "
                 + "\(threshold.formatted(.number.precision(.fractionLength(2))))."
         )
-        REPACKMemoryDiagnostics.log("Threshold regeneration complete")
+        MemoryDiagnostics.log("Threshold regeneration complete")
         return updatedResult
     }
 
@@ -377,7 +337,7 @@ extension REPACK {
            processingEngine !== samplingEngine {
             await processingEngine.cancel()
         }
-        REPACKMemoryDiagnostics.log("Inference cancelled")
+        MemoryDiagnostics.log("Inference cancelled")
     }
 
     func discardCurrentRun() {
@@ -385,19 +345,19 @@ extension REPACK {
     }
 }
 
-private extension REPACK {
+private extension REPACKPipeline {
     private func prepareSamplingEngineIfNeeded() async throws {
         guard samplingEngine == nil else { return }
 
         if usesSequentialEngineLoading {
             await processingEngine?.cancel()
             processingEngine = nil
-            REPACKMemoryDiagnostics.log("E2B processing engine released before E4B sampling")
+            MemoryDiagnostics.log("E2B processing engine released before E4B sampling")
         }
 
         emit(.preparingVisionModel)
         samplingEngine = try await engineFactory.makeVisionEngine(modelURL: samplingModelURL)
-        REPACKMemoryDiagnostics.log("Sampling engine restored")
+        MemoryDiagnostics.log("Sampling engine restored")
     }
 
     private func prepareProcessingEngineIfNeeded() async throws {
@@ -406,18 +366,18 @@ private extension REPACK {
         if usesSequentialEngineLoading {
             await samplingEngine?.cancel()
             samplingEngine = nil
-            REPACKMemoryDiagnostics.log("E4B sampling engine released before E2B processing")
+            MemoryDiagnostics.log("E4B sampling engine released before E2B processing")
         }
 
         emit(.preparingTextModel)
         processingEngine = try await engineFactory.makeTextEngine(modelURL: processingModelURL)
-        REPACKMemoryDiagnostics.log("Processing engine restored")
+        MemoryDiagnostics.log("Processing engine restored")
     }
 
     private func atomize(
-        captions: [REPACKCaption]
-    ) async throws -> [REPACKAtomizedCaption] {
-        var atomizedCaptions: [REPACKAtomizedCaption] = []
+        captions: [CaptionSample]
+    ) async throws -> [AtomizedCaption] {
+        var atomizedCaptions: [AtomizedCaption] = []
         atomizedCaptions.reserveCapacity(captions.count)
 
         for caption in captions {
@@ -425,7 +385,7 @@ private extension REPACK {
             emit(.atomizing(completed: atomizedCaptions.count, total: captions.count))
             let result = try await atomize(caption: caption.text)
             atomizedCaptions.append(
-                REPACKAtomizedCaption(
+                AtomizedCaption(
                     caption: caption,
                     statements: result.statements,
                     status: result.status
@@ -436,7 +396,7 @@ private extension REPACK {
                     + "[\(String(describing: result.status))]:\n"
                     + result.statements.debugList
             )
-            REPACKMemoryDiagnostics.log("Atomized caption \(caption.index)")
+            MemoryDiagnostics.log("Atomized caption \(caption.index)")
             emit(.atomizing(completed: atomizedCaptions.count, total: captions.count))
         }
 
@@ -444,8 +404,8 @@ private extension REPACK {
     }
 
     private func promotingReferenceIfNeeded(
-        in atomizedCaptions: [REPACKAtomizedCaption]
-    ) -> [REPACKAtomizedCaption] {
+        in atomizedCaptions: [AtomizedCaption]
+    ) -> [AtomizedCaption] {
         guard let failedReference = atomizedCaptions.first,
               failedReference.status == .unparseable,
               let promotedIndex = atomizedCaptions.dropFirst().firstIndex(where: {
@@ -458,8 +418,8 @@ private extension REPACK {
         let promoted = reordered[promotedIndex]
 
         // If the reference caption is not parsable into atomics, switch it with the first valid caption.
-        reordered[0] = REPACKAtomizedCaption(
-            caption: REPACKCaption(
+        reordered[0] = AtomizedCaption(
+            caption: CaptionSample(
                 index: failedReference.caption.index,
                 kind: .reference,
                 text: promoted.caption.text
@@ -467,8 +427,8 @@ private extension REPACK {
             statements: promoted.statements,
             status: promoted.status
         )
-        reordered[promotedIndex] = REPACKAtomizedCaption(
-            caption: REPACKCaption(
+        reordered[promotedIndex] = AtomizedCaption(
+            caption: CaptionSample(
                 index: promoted.caption.index,
                 kind: .sample,
                 text: failedReference.caption.text
@@ -484,26 +444,26 @@ private extension REPACK {
     }
 
     private func score(
-        atomizedCaptions: [REPACKAtomizedCaption],
-        timings: inout [REPACKStageTiming]
-    ) async throws -> [REPACKScoredAtomic] {
+        atomizedCaptions: [AtomizedCaption],
+        timings: inout [StageTiming]
+    ) async throws -> [ScoredAtomic] {
         let start = clock.now
         let scoredAtomics = try await score(
             referenceAtoms: atomizedCaptions.first?.statements ?? [],
             sampleAtoms: atomizedCaptions.dropFirst().map(\.statements)
         )
-        let timing = REPACKStageTiming(
+        let timing = StageTiming(
             stage: .scoring,
             duration: start.duration(to: clock.now)
         )
         timings.append(timing)
         debugLog("Scoring complete in \(timing.duration).")
-        REPACKMemoryDiagnostics.log("Scoring stage complete")
+        MemoryDiagnostics.log("Scoring stage complete")
         return scoredAtomics
     }
 
     private func retainedAtomics(
-        from scoredAtomics: [REPACKScoredAtomic],
+        from scoredAtomics: [ScoredAtomic],
         threshold: Double
     ) -> [String] {
         scoredAtomics.compactMap { atomic in
@@ -513,19 +473,19 @@ private extension REPACK {
 
     private func validate(threshold: Double) throws {
         guard threshold.isFinite, 0...1 ~= threshold else {
-            throw REPACKError.invalidThreshold(threshold)
+            throw PipelineError.invalidThreshold(threshold)
         }
     }
 
     private func nonempty(_ response: String) throws -> String {
         let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            throw REPACKError.emptyModelResponse
+            throw PipelineError.emptyModelResponse
         }
         return trimmed
     }
 
-    private func emit(_ progress: REPACKProgress) {
+    private func emit(_ progress: PipelineProgress) {
         progressHandler?(progress)
     }
 
@@ -544,7 +504,7 @@ private extension Array where Element == String {
     }
 }
 
-private extension REPACKScoredAtomic {
+private extension ScoredAtomic {
     var debugDescription: String {
         let formattedAverage = averageScore.formatted(
             .number.precision(.fractionLength(4))

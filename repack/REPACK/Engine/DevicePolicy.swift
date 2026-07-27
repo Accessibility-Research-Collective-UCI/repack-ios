@@ -1,19 +1,19 @@
 import Darwin
 import Foundation
 
-nonisolated enum REPACKE4BMode: Equatable, Sendable {
+nonisolated enum E4BMode: Equatable, Sendable {
     case unavailable
     case adaptive
     case resident
 }
 
-nonisolated struct REPACKDevicePolicy: Equatable, Sendable {
+nonisolated struct DevicePolicy: Equatable, Sendable {
     // E4B-ready to pipeline peak has measured about 2.6 GB. Keep roughly 1 GB in reserve.
     static let minimumAvailableForResidentEngines = UInt64(3_500) * 1_024 * 1_024
 
     let modelIdentifier: String
 
-    var e4BMode: REPACKE4BMode {
+    var e4BMode: E4BMode {
         switch modelIdentifier {
         // iPhone 15, 15 Plus (6 GB Physical RAM); 15 Pro, 15 Pro Max (8 GB Physical RAM)
         // while these phones may have the memory to run E4B, they are likely too slow practically
@@ -58,11 +58,11 @@ nonisolated struct REPACKDevicePolicy: Equatable, Sendable {
     }
 }
 
-nonisolated protocol REPACKMemoryProviding: Sendable {
+nonisolated protocol MemoryProviding: Sendable {
     func availableMemory() -> UInt64
 }
 
-nonisolated struct SystemREPACKMemoryProvider: REPACKMemoryProviding {
+nonisolated struct SystemMemoryProvider: MemoryProviding {
     func availableMemory() -> UInt64 {
         UInt64(os_proc_available_memory())
     }

@@ -22,7 +22,7 @@ struct CaptionExecutionTests {
         #expect(scheduler.submissions.count == 1)
         let task = try #require(scheduler.lastTask)
 
-        let updates: [REPACKProgress] = [
+        let updates: [PipelineProgress] = [
             .preparingVisionModel,
             .sampling(completed: 3, total: 6),
             .preparingTextModel,
@@ -158,7 +158,7 @@ struct CaptionExecutionTests {
 }
 
 @MainActor
-private final class FakeCaptionTaskScheduler: CaptionTaskScheduling {
+private final class FakeCaptionTaskScheduler: ContinuedProcessingTaskScheduling {
     struct Submission: Equatable {
         let identifier: String
         let title: String
@@ -172,11 +172,11 @@ private final class FakeCaptionTaskScheduler: CaptionTaskScheduling {
     var submissions: [Submission] = []
     var cancelledIdentifiers: [String] = []
     private(set) var lastTask: FakeCaptionTask?
-    private var launchHandler: (@MainActor (any CaptionTaskHandling) -> Void)?
+    private var launchHandler: (@MainActor (any ContinuedProcessingTaskHandling) -> Void)?
 
     func register(
         identifier: String,
-        launchHandler: @escaping @MainActor (any CaptionTaskHandling) -> Void
+        launchHandler: @escaping @MainActor (any ContinuedProcessingTaskHandling) -> Void
     ) -> Bool {
         self.launchHandler = launchHandler
         return registrationSucceeds
@@ -202,7 +202,7 @@ private final class FakeCaptionTaskScheduler: CaptionTaskScheduling {
 }
 
 @MainActor
-private final class FakeCaptionTask: CaptionTaskHandling {
+private final class FakeCaptionTask: ContinuedProcessingTaskHandling {
     struct TitleUpdate: Equatable {
         let title: String
         let subtitle: String

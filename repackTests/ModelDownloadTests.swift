@@ -30,7 +30,7 @@ struct ModelDownloadTests {
                 == "7301453651814b29d434ca0d341e365e0e28dc811cb764d836995cae25b37f31"
         )
         #expect(e4B.dependencies == [.e2b])
-        #expect(DownloadableModel.e4b.dependencyClosure == [.e2b, .e4b])
+        #expect(DownloadableModel.e4b.dependencyOrder == [.e2b, .e4b])
     }
 
     @Test("Plans use Hub sizes and production skips an installed dependency")
@@ -47,7 +47,7 @@ struct ModelDownloadTests {
 
         let debugPlan = try await service.preparePlan(
             for: .e4b,
-            validatesWithoutKeepingFiles: true
+            policy: .validateAndRemove
         )
 
         #expect(debugPlan.files.map(\.model) == [.e2b, .e4b])
@@ -57,7 +57,7 @@ struct ModelDownloadTests {
         try fixture.installModel(.e2b)
         let productionPlan = try await service.preparePlan(
             for: .e4b,
-            validatesWithoutKeepingFiles: false
+            policy: .install
         )
 
         #expect(productionPlan.files.map(\.model) == [.e4b])
@@ -97,11 +97,11 @@ struct ModelDownloadTests {
             fractions: [0.5]
         )
         let service = fixture.service(hub: hub)
-        let plan = ModelDownloadPlan(
+        let plan = DownloadPlan(
             requestedModel: .e4b,
             files: [first, second],
             dependencyAlreadyInstalled: false,
-            validatesWithoutKeepingFiles: true
+            policy: .validateAndRemove
         )
         let recorder = ProgressRecorder()
 
@@ -129,11 +129,11 @@ struct ModelDownloadTests {
         let debugFixture = try ModelDownloadFixture()
         defer { debugFixture.cleanUp() }
         let debugService = debugFixture.service(hub: hub)
-        let debugPlan = ModelDownloadPlan(
+        let debugPlan = DownloadPlan(
             requestedModel: .e2b,
             files: [file],
             dependencyAlreadyInstalled: false,
-            validatesWithoutKeepingFiles: true
+            policy: .validateAndRemove
         )
 
         let debugOutcome = try await debugService.execute(debugPlan) { _ in }
@@ -145,11 +145,11 @@ struct ModelDownloadTests {
         let productionFixture = try ModelDownloadFixture()
         defer { productionFixture.cleanUp() }
         let productionService = productionFixture.service(hub: hub)
-        let productionPlan = ModelDownloadPlan(
+        let productionPlan = DownloadPlan(
             requestedModel: .e2b,
             files: [file],
             dependencyAlreadyInstalled: false,
-            validatesWithoutKeepingFiles: false
+            policy: .install
         )
 
         let productionOutcome = try await productionService.execute(productionPlan) { _ in }
@@ -165,7 +165,7 @@ struct ModelDownloadTests {
         let fixture = try ModelDownloadFixture()
         defer { fixture.cleanUp() }
         let payload = Data("abc".utf8)
-        let descriptor = ApprovedModelDescriptor(
+        let descriptor = ModelDescriptor(
             model: .e2b,
             repositoryNamespace: "fixture",
             repositoryName: "fixture",
@@ -175,20 +175,20 @@ struct ModelDownloadTests {
             sha256: String(repeating: "0", count: 64),
             dependencies: []
         )
-        let file = ModelDownloadFile(
+        let file = DownloadFile(
             descriptor: descriptor,
             byteCount: Int64(payload.count + 100)
         )
         let hub = FixtureModelHub(payloads: [descriptor.fileName: payload])
         let service = fixture.service(hub: hub)
-        let plan = ModelDownloadPlan(
+        let plan = DownloadPlan(
             requestedModel: .e2b,
             files: [file],
             dependencyAlreadyInstalled: false,
-            validatesWithoutKeepingFiles: false
+            policy: .install
         )
 
-        await #expect(throws: ModelDownloadError.invalidChecksum(model: .e2b)) {
+        await #expect(throws: DownloadError.invalidChecksum(model: .e2b)) {
             try await service.execute(plan) { _ in }
         }
         #expect(try fixtureContents(at: fixture.downloadsDirectory).isEmpty)
@@ -206,11 +206,11 @@ struct ModelDownloadTests {
         )
         let hub = CancellableFixtureModelHub()
         let service = fixture.service(hub: hub)
-        let plan = ModelDownloadPlan(
+        let plan = DownloadPlan(
             requestedModel: .e2b,
             files: [file],
             dependencyAlreadyInstalled: false,
-            validatesWithoutKeepingFiles: false
+            policy: .install
         )
         let task = Task {
             try await service.execute(plan) { _ in }
@@ -265,14 +265,14 @@ struct ModelDownloadTests {
         )
 
         await #expect(
-            throws: ModelDownloadError.insufficientSpace(
+            throws: DownloadError.insufficientSpace(
                 requiredBytes: requiredBytes,
                 availableBytes: 1
             )
         ) {
             try await service.preparePlan(
                 for: .e2b,
-                validatesWithoutKeepingFiles: false
+                policy: .install
             )
         }
     }
@@ -306,15 +306,15 @@ struct ModelDownloadTests {
                 ]
             )
         )
-        let manager = ModelManager(
+        let manager = ModelLibrary(
             downloadService: service,
             installationDefaults: defaults
         )
-        let plan = ModelDownloadPlan(
+        let plan = DownloadPlan(
             requestedModel: .e4b,
             files: [e2B, e4B],
             dependencyAlreadyInstalled: false,
-            validatesWithoutKeepingFiles: false
+            policy: .install
         )
 
         _ = try await manager.download(plan: plan) { _ in }
@@ -488,9 +488,9 @@ struct ModelDownloadNotificationTests {
 }
 
 private actor ProgressRecorder {
-    private(set) var values: [ModelDownloadProgress] = []
+    private(set) var values: [DownloadProgress] = []
 
-    func append(_ progress: ModelDownloadProgress) {
+    func append(_ progress: DownloadProgress) {
         values.append(progress)
     }
 }
@@ -510,7 +510,7 @@ private actor FixtureModelHub: ModelHubDownloading {
         self.fractions = fractions
     }
 
-    func fileSize(for descriptor: ApprovedModelDescriptor) throws -> Int64 {
+    func fileSize(for descriptor: ModelDescriptor) throws -> Int64 {
         guard let size = sizes[descriptor.fileName] else {
             throw FixtureError.missingMetadata
         }
@@ -518,7 +518,7 @@ private actor FixtureModelHub: ModelHubDownloading {
     }
 
     func download(
-        _ descriptor: ApprovedModelDescriptor,
+        _ descriptor: ModelDescriptor,
         byteCount: Int64,
         to destination: URL,
         progressHandler: @escaping @Sendable (Double) async -> Void
@@ -542,12 +542,12 @@ private actor CancellableFixtureModelHub: ModelHubDownloading {
     private(set) var hasStarted = false
     private(set) var wasCancelled = false
 
-    func fileSize(for descriptor: ApprovedModelDescriptor) -> Int64 {
+    func fileSize(for descriptor: ModelDescriptor) -> Int64 {
         3
     }
 
     func download(
-        _ descriptor: ApprovedModelDescriptor,
+        _ descriptor: ModelDescriptor,
         byteCount: Int64,
         to destination: URL,
         progressHandler: @escaping @Sendable (Double) async -> Void
@@ -622,7 +622,7 @@ private struct FixedModelStorageCapacityProvider: ModelStorageCapacityProviding 
 }
 
 @MainActor
-private final class FakeModelDownloadTaskScheduler: ModelDownloadTaskScheduling {
+private final class FakeModelDownloadTaskScheduler: ContinuedProcessingTaskScheduling {
     struct Submission: Equatable {
         let identifier: String
         let title: String
@@ -633,11 +633,11 @@ private final class FakeModelDownloadTaskScheduler: ModelDownloadTaskScheduling 
     var submissionError: (any Error)?
     var submissions: [Submission] = []
     private(set) var lastTask: FakeModelDownloadTask?
-    private var launchHandler: (@MainActor (any ModelDownloadTaskHandling) -> Void)?
+    private var launchHandler: (@MainActor (any ContinuedProcessingTaskHandling) -> Void)?
 
     func register(
         identifier: String,
-        launchHandler: @escaping @MainActor (any ModelDownloadTaskHandling) -> Void
+        launchHandler: @escaping @MainActor (any ContinuedProcessingTaskHandling) -> Void
     ) -> Bool {
         self.launchHandler = launchHandler
         return true
@@ -659,7 +659,7 @@ private final class FakeModelDownloadTaskScheduler: ModelDownloadTaskScheduling 
 }
 
 @MainActor
-private final class FakeModelDownloadTask: ModelDownloadTaskHandling {
+private final class FakeModelDownloadTask: ContinuedProcessingTaskHandling {
     struct TitleUpdate: Equatable {
         let title: String
         let subtitle: String
@@ -714,13 +714,13 @@ private func fixtureFile(
     model: DownloadableModel,
     fileName: String,
     data: Data
-) -> ModelDownloadFile {
+) -> DownloadFile {
     let digest = SHA256.hash(data: data).map { byte in
         let value = String(byte, radix: 16)
         return value.count == 1 ? "0\(value)" : value
     }
     .joined()
-    let descriptor = ApprovedModelDescriptor(
+    let descriptor = ModelDescriptor(
         model: model,
         repositoryNamespace: "fixture",
         repositoryName: "fixture",
@@ -730,7 +730,7 @@ private func fixtureFile(
         sha256: digest,
         dependencies: model == .e4b ? [.e2b] : []
     )
-    return ModelDownloadFile(
+    return DownloadFile(
         descriptor: descriptor,
         byteCount: Int64(data.count)
     )
@@ -750,8 +750,8 @@ private func fixtureContents(at directory: URL) throws -> [URL] {
 private func testProgress(
     completedBytes: Int64,
     totalBytes: Int64
-) -> ModelDownloadProgress {
-    ModelDownloadProgress(
+) -> DownloadProgress {
+    DownloadProgress(
         requestedModel: .e4b,
         currentModel: .e2b,
         fileIndex: 1,
