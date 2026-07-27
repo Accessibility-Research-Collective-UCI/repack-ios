@@ -64,7 +64,7 @@ struct REPACKTests {
             progress.append($0)
         }
 
-        #expect(fixture.factory.events == [.validate, .makeVision])
+        #expect(fixture.factory.events == [.validate, .makeVision, .makeText])
         #expect(fixture.factory.visionState.captionSeeds == [1, 2, 3])
         #expect(result.captions.map(\.index) == [0, 1, 2])
         #expect(result.captions.map(\.kind) == [.reference, .sample, .sample])
@@ -78,14 +78,14 @@ struct REPACKTests {
         #expect(progress.contains(.atomizing(completed: 3, total: 3)))
 
         let captionCallCount = fixture.factory.visionState.captionSeeds.count
-        let atomizeCallCount = fixture.factory.visionState.atomizedCaptions.count
+        let atomizeCallCount = fixture.factory.textState.atomizedCaptions.count
         let regenerated = try await repack.regenerateCaption(threshold: 0.2)
 
         #expect(regenerated.retainedAtomics == ["red can", "white logo"])
         #expect(regenerated.caption == "red can | white logo")
         #expect(fixture.factory.visionState.captionSeeds.count == captionCallCount)
-        #expect(fixture.factory.visionState.atomizedCaptions.count == atomizeCallCount)
-        #expect(fixture.factory.visionState.repackagedAtomics.count == 2)
+        #expect(fixture.factory.textState.atomizedCaptions.count == atomizeCallCount)
+        #expect(fixture.factory.textState.repackagedAtomics.count == 2)
     }
 
     @Test("E4B samples with vision while E2B performs text processing")
@@ -316,13 +316,13 @@ struct REPACKTests {
         viewModel.startProcessing()
         try await waitUntil { viewModel.phase == .output }
 
-        let initialRepackages = fixture.factory.visionState.repackagedAtomics.count
+        let initialRepackages = fixture.factory.textState.repackagedAtomics.count
         viewModel.updateThreshold(0.2)
         try await Task.sleep(for: .milliseconds(100))
         viewModel.updateThreshold(0.8)
         try await Task.sleep(for: .milliseconds(800))
 
-        #expect(fixture.factory.visionState.repackagedAtomics.count == initialRepackages + 1)
+        #expect(fixture.factory.textState.repackagedAtomics.count == initialRepackages + 1)
         #expect(viewModel.result?.threshold == 0.8)
         #expect(viewModel.result?.retainedAtomics == ["red can"])
         #expect(!viewModel.isRegenerating)
@@ -382,7 +382,7 @@ struct REPACKTests {
             LocalModel(url: fixture.modelURL, isBundled: false)
         )
 
-        #expect(fixture.factory.events == [.validate, .makeVision])
+        #expect(fixture.factory.events == [.validate, .makeVision, .makeText])
         #expect(viewModel.phase == .ready)
     }
 
@@ -401,7 +401,7 @@ struct REPACKTests {
 
         await viewModel.loadPreparedModel()
 
-        #expect(fixture.factory.events == [.validate, .makeVision])
+        #expect(fixture.factory.events == [.validate, .makeVision, .makeText])
         #expect(viewModel.phase == .ready)
     }
 
@@ -616,6 +616,45 @@ struct REPACKTests {
         #expect(function["name"] as? String == "submit_atomic_statements")
         #expect(Set(properties.keys) == ["statements"])
         #expect(statements["type"] as? String == "array")
+    }
+
+    @Test("List atomization parses JSON, normalizes statements, and tolerates fences")
+    func atomizationListParsing() throws {
+        let response = """
+            ```json
+            [" A red can. ", "", "A red can.", "A logo is visible."]
+            ```
+            """
+
+        #expect(
+            try AtomizationListParser.parse(response)
+                == ["A red can.", "A logo is visible."]
+        )
+    }
+
+    @Test("List atomization rejects malformed and empty responses")
+    func atomizationListParsingFailures() {
+        #expect(throws: StructuredAtomizationError.invalidListResponse) {
+            try AtomizationListParser.parse("A red can.")
+        }
+        #expect(throws: StructuredAtomizationError.invalidListResponse) {
+            try AtomizationListParser.parse("[\"\", \"  \"]")
+        }
+    }
+
+    @Test("Atomization retries a list parsing failure in a fresh attempt")
+    func atomizationListRetry() async throws {
+        var attempts: [Int] = []
+        let result: String = try await AtomizationRetryPolicy.run { attempt in
+            attempts.append(attempt)
+            if attempt == 0 {
+                throw StructuredAtomizationError.invalidListResponse
+            }
+            return "recovered"
+        }
+
+        #expect(result == "recovered")
+        #expect(attempts == [0, 1])
     }
 
     @Test("Atomization retries a native tool-call parse failure in a fresh attempt")
