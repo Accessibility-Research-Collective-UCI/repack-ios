@@ -2,7 +2,7 @@
 @preconcurrency import LiteRTLM
 import Foundation
 
-// helper function to print time elapsed
+/// Helper function to print time elapsed
 private func formattedSeconds(_ duration: Duration) -> String {
     let seconds = Double(duration.components.seconds)
     let attoseconds = Double(duration.components.attoseconds) / 1_000_000_000_000_000_000
@@ -11,12 +11,7 @@ private func formattedSeconds(_ duration: Duration) -> String {
     return "\(elapsed.formatted(.number.precision(.fractionLength(2))))s"
 }
 
-let testImageURL = URL(
-    string: "https://upload.wikimedia.org/wikipedia/commons/0/0b/Cat_test.png?_=20220918031203"
-)!
-
-let captionPrompt = "Generate a short description of the image."
-
+// Creates engine for model.
 @MainActor
 func createEngineWithVision(
     modelPath: String,
@@ -38,6 +33,7 @@ func createEngineWithVision(
     return engine
 }
 
+/// Generates n samples for a given model, prompt with image and text, and  speculative decoding setting.
 @MainActor
 func generateSamples(
     modelPath: String,
@@ -72,8 +68,9 @@ func generateSamples(
     print("Total time: \(formattedSeconds(totalStart.duration(to: clock.now)))")
 }
 
+/// Applies sampling to Gemma 4 E2B and E4B, with speculative decoding disabled/enabled.
 @MainActor
-func runSamplingSettingsProbe() async {
+func runSampling() async {
     let e2bPath = Bundle.main.path(
         forResource: "gemma-4-E2B-it",
         ofType: "litertlm",
@@ -84,6 +81,11 @@ func runSamplingSettingsProbe() async {
         ofType: "litertlm",
         inDirectory: "DevelopmentModels"
     )!
+
+    let testImageURL = URL(
+        string: "https://upload.wikimedia.org/wikipedia/commons/0/0b/Cat_test.png?_=20220918031203"
+    )!
+    let captionPrompt = "Generate a short description of the image."
 
     let (imageData, _) = try! await URLSession.shared.data(from: testImageURL)
     let message = Message(

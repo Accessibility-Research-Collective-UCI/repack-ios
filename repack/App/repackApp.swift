@@ -9,7 +9,7 @@ final class REPACKAppDelegate: NSObject, UIApplicationDelegate {
         CaptionExecutionCoordinator.shared.register()
         #if DEBUG
         Task { @MainActor in
-            await runSamplingSettingsProbe()
+            await runSampling()
         }
         #endif
         return true
