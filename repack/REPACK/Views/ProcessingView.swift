@@ -86,7 +86,9 @@ struct ProcessingView: View {
         switch model.progress {
         case .sampling, .preparingVisionModel, nil:
             model.selectedModelName
-        case .atomizing, .preparingTextModel, .scoring, .repackaging:
+        case .scoring:
+            model.scoringModelName
+        case .atomizing, .preparingTextModel, .repackaging:
             model.verificationModelName
         }
     }
@@ -98,7 +100,9 @@ struct ProcessingView: View {
         switch model.progress {
         case .sampling, .preparingVisionModel, nil:
             return DownloadableModel.executionLocation(for: modelURL)
-        case .atomizing, .preparingTextModel, .scoring, .repackaging:
+        case .scoring:
+            return .onDevice
+        case .atomizing, .preparingTextModel, .repackaging:
             guard let processingURL = ModelLibrary.processingModelURL(
                 for: modelURL,
                 availableModels: model.localModels

@@ -37,6 +37,7 @@ protocol ModelDownloadNotifying: AnyObject {
 }
 
 @MainActor
+/// Reports completed background model downloads to the user.
 final class ModelDownloadNotifier: ModelDownloadNotifying {
     static let shared = ModelDownloadNotifier()
 

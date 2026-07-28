@@ -13,9 +13,6 @@
     "%@ selected." : {
 
     },
-    "%@ was also selected because of model dependencies." : {
-
-    },
     "%@ was downloaded. Select it to load it." : {
 
     },
@@ -91,13 +88,25 @@
     "10" : {
 
     },
-    "A higher threshold retains only details supported more consistently across caption samples." : {
+    "A higher threshold only retains details that are more consistently supported across caption samples." : {
 
     },
     "Adjusts how consistently a detail must appear." : {
 
     },
     "Already Downloaded" : {
+
+    },
+    "Also deselected because the files are installed together: %@." : {
+
+    },
+    "Also deselects %@ because the files are installed together." : {
+
+    },
+    "Also selected because of model dependencies: %@." : {
+
+    },
+    "Also selects %@ because of model dependencies." : {
 
     },
     "Atomic Statements and Scores" : {
@@ -120,9 +129,6 @@
 
     },
     "Background Download Unavailable" : {
-
-    },
-    "BLEU average: %@" : {
 
     },
     "Breaking down captions" : {
@@ -185,6 +191,12 @@
     "Captioning Interrupted" : {
 
     },
+    "Captioning Prompt" : {
+
+    },
+    "Captioning Settings" : {
+
+    },
     "Captioning stopped because this device cannot run REPACK while the app is in the background." : {
 
     },
@@ -194,16 +206,28 @@
     "Captioning was stopped by the system. Restart Captioning to begin again from the start." : {
 
     },
+    "Changes the threshold by %@." : {
+
+    },
     "Choose an Image" : {
 
     },
+    "Compares atomic statements by meaning. Its tokenizer is also included." : {
+
+    },
     "Custom" : {
+
+    },
+    "DEBUG: Embedding Gemma and its tokenizer will be downloaded and validated, temporarily using approximately %@. The downloaded test files will be deleted after validation." : {
 
     },
     "DEBUG: Gemma 4 E4B also requires Gemma 4 E2B. Both models will be downloaded in order and temporarily use approximately %@. The downloaded test files will be deleted after validation." : {
 
     },
     "DEBUG: This download will temporarily use approximately %@. The downloaded test file will be deleted after validation." : {
+
+    },
+    "Decrease threshold" : {
 
     },
     "Delete Selected…" : {
@@ -233,7 +257,13 @@
     "Download complete." : {
 
     },
+    "Download Embedding Gemma before captioning." : {
+
+    },
     "Download Failed" : {
+
+    },
+    "Download Progress" : {
 
     },
     "Download Stopped" : {
@@ -243,9 +273,6 @@
 
     },
     "Downloaded" : {
-
-    },
-    "Downloaded from Hugging Face" : {
 
     },
     "Downloading %@" : {
@@ -297,6 +324,33 @@
     "Elapsed" : {
 
     },
+    "Embedding Gemma 300M" : {
+
+    },
+    "Embedding Gemma and its tokenizer will use approximately %@ on this iPhone." : {
+
+    },
+    "Embedding Gemma model files are not available." : {
+
+    },
+    "Embedding Gemma tokenizer" : {
+
+    },
+    "Embedding Models" : {
+
+    },
+    "Embedding models compare atomic statements from broken down captions by semantic similarity." : {
+
+    },
+    "EmbeddingGemma inference failed." : {
+
+    },
+    "EmbeddingGemma returned an invalid embedding dimension." : {
+
+    },
+    "EmbeddingGemma returned an invalid embedding." : {
+
+    },
     "Enter a prompt before captioning the image." : {
 
     },
@@ -321,9 +375,6 @@
     "Gemma 4 E4B is not available on this iPhone." : {
 
     },
-    "Gemma 4 E4B will also be selected because it requires this model." : {
-
-    },
     "Generate a caption before changing its threshold." : {
 
     },
@@ -339,19 +390,28 @@
     "Image Captioning" : {
 
     },
+    "Image Captioning Models" : {
+
+    },
+    "Image captioning models describe the image and break captions into atomic statements." : {
+
+    },
     "Imported" : {
 
     },
     "Imported Model" : {
 
     },
+    "Increase threshold" : {
+
+    },
     "Information Verification" : {
 
     },
-    "Interrupted Caption" : {
+    "Interrupted" : {
 
     },
-    "Its unused Gemma 4 E2B dependency will be selected by default." : {
+    "Interrupted Caption" : {
 
     },
     "Keep Downloading" : {
@@ -360,16 +420,22 @@
     "Keep this page open while the models are downloading." : {
 
     },
-    "Loading model on-device..." : {
+    "Lexical average" : {
+
+    },
+    "Lexical Similarity" : {
+
+    },
+    "Lexical Similarity (BLEU-1)" : {
+
+    },
+    "Loading model" : {
 
     },
     "Manage Installed Models" : {
 
     },
     "Manage Storage" : {
-
-    },
-    "Model" : {
 
     },
     "Model download" : {
@@ -444,9 +510,6 @@
     "Not retained" : {
 
     },
-    "Number of samples REPACK uses to verify information. More samples can improve verification, but take longer." : {
-
-    },
     "OK" : {
 
     },
@@ -484,6 +547,9 @@
 
     },
     "Preparing vision model" : {
+
+    },
+    "Processing" : {
 
     },
     "Product" : {
@@ -538,6 +604,9 @@
     "REPACK Stopped" : {
 
     },
+    "REPACK verifies image description information by generating additional descriptions after the first. More samples can improve verification, but will take longer." : {
+
+    },
     "REPACK was interrupted." : {
 
     },
@@ -550,7 +619,10 @@
     "Repackaging the verified statements." : {
 
     },
-    "Required by Gemma 4 E4B" : {
+    "Required by %@" : {
+
+    },
+    "Required by Embedding Gemma 300M." : {
 
     },
     "Reset" : {
@@ -560,6 +632,9 @@
 
     },
     "Result: %@" : {
+
+    },
+    "Results" : {
 
     },
     "Retained" : {
@@ -604,10 +679,19 @@
     "Select Model" : {
 
     },
+    "Select which model to caption with" : {
+
+    },
+    "Select which model to caption with." : {
+
+    },
     "Selected image" : {
 
     },
-    "Selected Model" : {
+    "Selected model" : {
+
+    },
+    "Selected model (tap to change model)" : {
 
     },
     "Selected models removed." : {
@@ -617,6 +701,24 @@
 
     },
     "Selects this model for removal." : {
+
+    },
+    "Semantic average" : {
+
+    },
+    "Semantic scoring data did not match the atomic statements." : {
+
+    },
+    "Semantic Similarity" : {
+
+    },
+    "Semantic Similarity (Embedding Gemma 300)" : {
+
+    },
+    "Semantic Similarity requires the EmbeddingGemma model and tokenizer." : {
+
+    },
+    "Similarity Scorer" : {
 
     },
     "Similarity scoring complete." : {
@@ -641,13 +743,13 @@
         }
       }
     },
+    "Stopped" : {
+
+    },
     "Stops captioning and returns to your setup." : {
 
     },
     "Stops the download and removes temporary files." : {
-
-    },
-    "Tap Selected Model to choose and load a model." : {
 
     },
     "Tap to brighten" : {
@@ -666,6 +768,9 @@
 
     },
     "The downloaded model file could not be found." : {
+
+    },
+    "The EmbeddingGemma model has an unsupported tensor signature." : {
 
     },
     "The image could not be prepared." : {
@@ -736,6 +841,12 @@
 
     },
     "Updating caption…" : {
+
+    },
+    "Using meaning-based overlap to select information from image description." : {
+
+    },
+    "Using word overlap to select information from image description." : {
 
     },
     "Verification samples" : {

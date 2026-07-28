@@ -174,7 +174,8 @@ struct ImageStoreTests {
         #expect(model.promptChoice == .describe)
         #expect(model.customPrompt.isEmpty)
         #expect(model.sampleCount == 5)
-        #expect(model.threshold == 0.5)
+        #expect(model.scoringMetric == model.defaultScoringMetric)
+        #expect(model.threshold == model.defaultScoringMetric.threshold.defaultValue)
         #expect(!FileManager.default.fileExists(atPath: retainedURL.path))
     }
 
@@ -216,6 +217,7 @@ struct ImageStoreTests {
             retainedAtomics: [],
             caption: "A test image.",
             threshold: 0.5,
+            scoringMetric: .bleu,
             timings: []
         )
     }

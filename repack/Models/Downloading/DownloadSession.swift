@@ -3,6 +3,7 @@ import Observation
 
 @MainActor
 @Observable
+/// Owns the currently active continued-processing task.
 final class DownloadSession {
     enum Alert: Identifiable, Equatable {
         case confirmation(DownloadPlan)

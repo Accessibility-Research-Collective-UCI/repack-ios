@@ -14,6 +14,7 @@ nonisolated struct VolumeModelStorageCapacityProvider: ModelStorageCapacityProvi
     }
 }
 
+/// Plans, validates, and installs model artifacts and their dependencies.
 nonisolated protocol ModelDownloadServicing: Sendable {
     func preparePlan(
         for model: DownloadableModel,
@@ -198,7 +199,7 @@ actor ModelDownloadService: ModelDownloadServicing {
     }
 
     func isInstalled(_ model: DownloadableModel) -> Bool {
-        isInstalledFile(model)
+        model.dependencyOrder.allSatisfy(isInstalledFile)
     }
 
     func cancelCurrentDownload() async {

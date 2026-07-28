@@ -9,6 +9,7 @@ nonisolated enum PipelineError: Error, Equatable, LocalizedError, Sendable {
     case missingE2BProcessingModel
     case missingVisionEngine
     case missingTextEngine
+    case missingEmbeddingModel
     case noCachedResult
     case emptyModelResponse
 
@@ -30,6 +31,11 @@ nonisolated enum PipelineError: Error, Equatable, LocalizedError, Sendable {
             String(localized: "The vision model is not ready.")
         case .missingTextEngine:
             String(localized: "The text model is not ready.")
+        case .missingEmbeddingModel:
+            String(
+                localized:
+                    "Semantic Similarity requires the EmbeddingGemma model and tokenizer."
+            )
         case .noCachedResult:
             String(localized: "Generate a caption before changing its threshold.")
         case .emptyModelResponse:

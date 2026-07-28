@@ -25,42 +25,11 @@ struct ResultView: View {
             .padding()
             .background(.quaternary, in: .rect(cornerRadius: 20))
 
-            VStack(alignment: .leading, spacing: 12) {
-                ViewThatFits(in: .horizontal) {
-                    HStack {
-                        thresholdLabel
-                        Spacer()
-                        thresholdValue
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        thresholdLabel
-                        thresholdValue
-                    }
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isHeader)
-
-                Slider(
-                    value: Binding(
-                        get: { model.threshold },
-                        set: { model.updateThreshold($0) }
-                    ),
-                    in: 0...1,
-                    step: 0.05
-                )
-                .accessibilityLabel("Verification threshold")
-                .accessibilityValue(
-                    Text(
-                        model.threshold,
-                        format: .percent.precision(.fractionLength(0))
-                    )
-                )
-                .accessibilityHint("Adjusts how consistently a detail must appear.")
-
-                Text("A higher threshold retains only details supported more consistently across caption samples.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+            SimilarityThresholdControl(
+                metric: result.scoringMetric,
+                value: model.threshold,
+                onChange: model.updateThreshold
+            )
 
             DetailsView(
                 result: result,
@@ -76,15 +45,5 @@ struct ResultView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
         }
-    }
-
-    private var thresholdLabel: some View {
-        Text("Verification threshold")
-            .font(.headline)
-    }
-
-    private var thresholdValue: some View {
-        Text(model.threshold, format: .percent.precision(.fractionLength(0)))
-            .monospacedDigit()
     }
 }

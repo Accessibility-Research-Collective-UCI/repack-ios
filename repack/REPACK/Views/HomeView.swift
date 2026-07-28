@@ -21,7 +21,7 @@ struct HomeView: View {
                 }
             }
 
-            HomeModelSection(
+            CaptioningSettingsSection(
                 model: model,
                 showSelection: $isModelSelectionPresented,
                 showLibrary: $showModelManager

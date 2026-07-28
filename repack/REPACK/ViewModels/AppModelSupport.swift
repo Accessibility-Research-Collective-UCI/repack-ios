@@ -29,7 +29,10 @@ extension AppModel {
                 samplingModelURL: modelURL,
                 processingModelURL: processingModelURL,
                 engineFactory: engineFactory,
-                devicePolicy: devicePolicy
+                devicePolicy: devicePolicy,
+                embeddingProvider: EmbeddingModelResources.available().map {
+                    EmbeddingGemmaService(resources: $0)
+                }
             )
             phase = hasPendingCaptionRun
                 ? .interrupted(
@@ -125,7 +128,8 @@ extension AppModel {
         promptChoice = .describe
         customPrompt = ""
         sampleCount = 5
-        threshold = 0.5
+        scoringMetric = defaultScoringMetric
+        threshold = scoringMetric.threshold.defaultValue
         processStartedAt = nil
         completedElapsed = nil
         isRegenerating = false
@@ -152,7 +156,8 @@ extension AppModel {
         image: URL,
         prompt: CaptionPrompt,
         count: Int,
-        threshold requestedThreshold: Double
+        threshold requestedThreshold: Double,
+        scoringMetric: ScoringMetric
     ) {
         guard currentRunID == runID, processTask == nil else { return }
 
@@ -164,7 +169,8 @@ extension AppModel {
                     image: image,
                     samplePrompt: prompt,
                     sampleCount: count,
-                    threshold: requestedThreshold
+                    threshold: requestedThreshold,
+                    scoringMetric: scoringMetric
                 ) { [weak self] update in
                     self?.progress = update
                     self?.captionExecutionCoordinator.report(update)
@@ -243,7 +249,8 @@ extension AppModel {
         image: URL,
         model: URL,
         count: Int,
-        threshold: Double
+        threshold: Double,
+        scoringMetric: ScoringMetric
     ) {
         pendingRunStore.save(
             PendingCaptionRun(
@@ -252,7 +259,8 @@ extension AppModel {
                 promptChoice: promptChoice.rawValue,
                 customPrompt: customPrompt,
                 sampleCount: count,
-                threshold: threshold
+                threshold: threshold,
+                scoringMetric: scoringMetric
             )
         )
         hasPendingCaptionRun = true
@@ -274,7 +282,8 @@ extension AppModel {
         promptChoice = restoredPromptChoice
         customPrompt = pendingRun.customPrompt
         sampleCount = pendingRun.sampleCount
-        threshold = pendingRun.threshold
+        scoringMetric = pendingRun.scoringMetric
+        threshold = scoringMetric.threshold.normalized(pendingRun.threshold)
         hasPendingCaptionRun = true
         return pendingRun
     }

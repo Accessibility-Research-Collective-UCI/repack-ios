@@ -1,6 +1,7 @@
 import Accessibility
 import SwiftUI
 
+/// Selects installed artifacts for dependency-safe deletion.
 struct ManageModelStorageView: View {
     @Bindable var model: AppModel
     @State private var selection: Set<String> = []
@@ -98,15 +99,25 @@ struct ManageModelStorageView: View {
             isSelected: isSelected,
             current: selection
         )
-        let changedAutomatically = selection
+        let addedAutomatically = selection
             .subtracting(previous)
             .subtracting([item.id])
-        if let addedID = changedAutomatically.first,
-            let added = model.modelStorageItems.first(where: { $0.id == addedID }) {
+        let removedAutomatically = previous
+            .subtracting(selection)
+            .subtracting([item.id])
+        if !addedAutomatically.isEmpty {
             AccessibilityNotification.Announcement(
                 String(
                     localized:
-                        "\(added.displayName) was also selected because of model dependencies."
+                        "Also selected because of model dependencies: \(names(for: addedAutomatically))."
+                )
+            )
+            .post()
+        } else if !removedAutomatically.isEmpty {
+            AccessibilityNotification.Announcement(
+                String(
+                    localized:
+                        "Also deselected because the files are installed together: \(names(for: removedAutomatically))."
                 )
             )
             .post()
@@ -114,26 +125,35 @@ struct ManageModelStorageView: View {
     }
 
     private func accessibilityHint(for item: StorageItem) -> String {
-        if item.record.origin == .approved, item.record.model == .e2b,
-            model.modelStorageItems.contains(where: {
-                $0.record.origin == .approved && $0.record.model == .e4b
-            }) {
+        let isSelected = selection.contains(item.id)
+        let updated = model.deletionSelection(
+            toggling: item,
+            isSelected: !isSelected,
+            current: selection
+        )
+        let automaticChanges = isSelected
+            ? selection.subtracting(updated).subtracting([item.id])
+            : updated.subtracting(selection).subtracting([item.id])
+        guard !automaticChanges.isEmpty else {
+            return String(localized: "Selects this model for removal.")
+        }
+        let changedNames = names(for: automaticChanges)
+        if isSelected {
             return String(
                 localized:
-                    "Gemma 4 E4B will also be selected because it requires this model."
+                    "Also deselects \(changedNames) because the files are installed together."
             )
         }
-        if item.record.origin == .approved, item.record.model == .e4b,
-            model.modelStorageItems.contains(where: {
-                $0.record.origin == .approved
-                    && $0.record.model == .e2b
-                    && !$0.record.explicitlyOwned
-            }) {
-            return String(
-                localized:
-                    "Its unused Gemma 4 E2B dependency will be selected by default."
-            )
-        }
-        return String(localized: "Selects this model for removal.")
+        return String(
+            localized:
+                "Also selects \(changedNames) because of model dependencies."
+        )
+    }
+
+    private func names(for ids: Set<String>) -> String {
+        model.modelStorageItems
+            .filter { ids.contains($0.id) }
+            .map(\.displayName)
+            .formatted(.list(type: .and))
     }
 }

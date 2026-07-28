@@ -7,6 +7,25 @@ nonisolated struct PendingCaptionRun: Codable, Equatable, Sendable {
     let customPrompt: String
     let sampleCount: Int
     let threshold: Double
+    let scoringMetric: ScoringMetric
+
+    init(
+        imageFilename: String,
+        modelFilename: String,
+        promptChoice: String,
+        customPrompt: String,
+        sampleCount: Int,
+        threshold: Double,
+        scoringMetric: ScoringMetric = .bleu
+    ) {
+        self.imageFilename = imageFilename
+        self.modelFilename = modelFilename
+        self.promptChoice = promptChoice
+        self.customPrompt = customPrompt
+        self.sampleCount = sampleCount
+        self.threshold = threshold
+        self.scoringMetric = scoringMetric
+    }
 
     var isValid: Bool {
         !imageFilename.isEmpty
@@ -14,6 +33,30 @@ nonisolated struct PendingCaptionRun: Codable, Equatable, Sendable {
             && AppModel.PromptChoice(rawValue: promptChoice) != nil
             && 1...10 ~= sampleCount
             && 0...1 ~= threshold
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case imageFilename
+        case modelFilename
+        case promptChoice
+        case customPrompt
+        case sampleCount
+        case threshold
+        case scoringMetric
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        imageFilename = try container.decode(String.self, forKey: .imageFilename)
+        modelFilename = try container.decode(String.self, forKey: .modelFilename)
+        promptChoice = try container.decode(String.self, forKey: .promptChoice)
+        customPrompt = try container.decode(String.self, forKey: .customPrompt)
+        sampleCount = try container.decode(Int.self, forKey: .sampleCount)
+        threshold = try container.decode(Double.self, forKey: .threshold)
+        scoringMetric = try container.decodeIfPresent(
+            ScoringMetric.self,
+            forKey: .scoringMetric
+        ) ?? .bleu
     }
 }
 

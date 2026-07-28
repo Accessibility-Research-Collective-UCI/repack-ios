@@ -10,27 +10,59 @@ struct ModelDownloadTests {
     func approvedCatalog() {
         let e2B = DownloadableModel.e2b.descriptor
         let e4B = DownloadableModel.e4b.descriptor
+        let embedding = DownloadableModel.embeddingGemma.descriptor
+        let tokenizer = DownloadableModel.embeddingGemmaTokenizer.descriptor
+        guard case .huggingFace(let e2BSource) = e2B.source,
+              case .huggingFace(let e4BSource) = e4B.source,
+              case .direct(let embeddingURL) = embedding.source,
+              case .direct(let tokenizerURL) = tokenizer.source else {
+            Issue.record("Catalog models used an unexpected source")
+            return
+        }
 
-        #expect(e2B.revision == "9262660a1676eed6d0c477ab1a86344430854664")
+        #expect(e2BSource.revision == "9262660a1676eed6d0c477ab1a86344430854664")
         #expect(
             e2B.sha256
                 == "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c"
         )
         #expect(
-            e2B.xetHash
+            e2BSource.xetHash
                 == "ee3c29acd58e68bea04006a144cd2e40b3b34dcf5c08200a013744c518b15115"
         )
-        #expect(e4B.revision == "f7ad3343bd6ebc9607f4dc3bc4f2398bd5749bc5")
+        #expect(e4BSource.revision == "f7ad3343bd6ebc9607f4dc3bc4f2398bd5749bc5")
         #expect(
             e4B.sha256
                 == "0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0"
         )
         #expect(
-            e4B.xetHash
+            e4BSource.xetHash
                 == "7301453651814b29d434ca0d341e365e0e28dc811cb764d836995cae25b37f31"
         )
         #expect(e4B.dependencies == [.e2b])
         #expect(DownloadableModel.e4b.dependencyOrder == [.e2b, .e4b])
+        #expect(
+            embeddingURL.absoluteString
+                == "https://uci-repack.s3.us-west-2.amazonaws.com/embeddinggemma-300M_seq256_mixed-precision.tflite"
+        )
+        #expect(
+            embedding.sha256
+                == "37115ef7bff76cd37dd86abe503ff511b1032bf85fc624a85c49c84899e92bc5"
+        )
+        #expect(
+            tokenizerURL.absoluteString
+                == "https://uci-repack.s3.us-west-2.amazonaws.com/sentencepiece.model"
+        )
+        #expect(
+            tokenizer.sha256
+                == "d6daa52d93d7aad10e8388bd526c4e501d914b47177398d1d9621f1fe48438c7"
+        )
+        #expect(
+            DownloadableModel.embeddingGemma.dependencyOrder
+                == [.embeddingGemmaTokenizer, .embeddingGemma]
+        )
+        #expect(
+            DownloadableModel.embeddingModels == [.embeddingGemma]
+        )
     }
 
     @Test("Plans use Hub sizes and production skips an installed dependency")
@@ -66,6 +98,31 @@ struct ModelDownloadTests {
         #expect(productionPlan.confirmationMessage.contains("already downloaded"))
     }
 
+    @Test("Embedding model plans include the tokenizer and model")
+    func embeddingModelPlan() async throws {
+        let fixture = try ModelDownloadFixture()
+        defer { fixture.cleanUp() }
+        let hub = FixtureModelHub(
+            sizes: [
+                DownloadableModel.embeddingGemmaTokenizer.fileName: 4,
+                DownloadableModel.embeddingGemma.fileName: 10
+            ]
+        )
+        let service = fixture.service(hub: hub)
+
+        let plan = try await service.preparePlan(
+            for: .embeddingGemma,
+            policy: .validateAndRemove
+        )
+
+        #expect(
+            plan.files.map(\.model)
+                == [.embeddingGemmaTokenizer, .embeddingGemma]
+        )
+        #expect(plan.totalBytes == 14)
+        #expect(plan.confirmationMessage.contains("tokenizer"))
+    }
+
     @Test("Temporary Xet progress infers the reconstructed file length")
     func inferredFileProgress() throws {
         let fixture = try ModelDownloadFixture()
@@ -79,6 +136,73 @@ struct ModelDownloadTests {
         )
 
         #expect(fraction == 0.5)
+    }
+
+    @Test("A pre-cancelled direct download leaves no active work")
+    func directDownloadImmediateCancellation() async throws {
+        let fixture = try ModelDownloadFixture()
+        defer { fixture.cleanUp() }
+        let downloader = DirectHTTPDownloader()
+        downloader.cancel()
+
+        do {
+            _ = try await downloader.download(
+                from: URL(string: "https://example.invalid/model.tflite")!,
+                expectedByteCount: 100,
+                to: fixture.directory.appending(path: "cancelled.tflite"),
+                progressHandler: { _ in }
+            )
+            Issue.record("Expected the direct download to be cancelled")
+        } catch let error as URLError {
+            #expect(error.code == .cancelled)
+        }
+
+        #expect(!downloader.hasActiveWork)
+    }
+
+    @Test("Direct downloads clean up progress work after completion and failure")
+    func directDownloadProgressCleanup() async throws {
+        let fixture = try ModelDownloadFixture()
+        defer { fixture.cleanUp() }
+        let source = URL(string: "https://fixture.invalid/model.tflite")!
+        let payload = Data("embedding-model".utf8)
+
+        let successfulSession = DirectDownloadURLProtocol.session(
+            statusCode: 200,
+            data: payload
+        )
+        defer { successfulSession.invalidateAndCancel() }
+        let successfulDownloader = DirectHTTPDownloader(
+            session: successfulSession
+        )
+        let destination = fixture.directory.appending(path: "model.tflite")
+
+        let downloadedURL = try await successfulDownloader.download(
+            from: source,
+            expectedByteCount: Int64(payload.count),
+            to: destination,
+            progressHandler: { _ in }
+        )
+
+        #expect(try Data(contentsOf: downloadedURL) == payload)
+        #expect(!successfulDownloader.hasActiveWork)
+
+        let failingSession = DirectDownloadURLProtocol.session(
+            statusCode: 500,
+            data: Data()
+        )
+        defer { failingSession.invalidateAndCancel() }
+        let failingDownloader = DirectHTTPDownloader(session: failingSession)
+
+        await #expect(throws: URLError.self) {
+            _ = try await failingDownloader.download(
+                from: source,
+                expectedByteCount: 1,
+                to: fixture.directory.appending(path: "failure.tflite"),
+                progressHandler: { _ in }
+            )
+        }
+        #expect(!failingDownloader.hasActiveWork)
     }
 
     @Test("Dependencies report progress in order")
@@ -167,13 +291,17 @@ struct ModelDownloadTests {
         let payload = Data("abc".utf8)
         let descriptor = ModelDescriptor(
             model: .e2b,
-            repositoryNamespace: "fixture",
-            repositoryName: "fixture",
-            revision: "fixture-revision",
             fileName: "invalid.litertlm",
-            xetHash: String(repeating: "0", count: 64),
             sha256: String(repeating: "0", count: 64),
-            dependencies: []
+            dependencies: [],
+            source: .huggingFace(
+                HuggingFaceModelSource(
+                    namespace: "fixture",
+                    name: "fixture",
+                    revision: "fixture-revision",
+                    xetHash: String(repeating: "0", count: 64)
+                )
+            )
         )
         let file = DownloadFile(
             descriptor: descriptor,
@@ -369,6 +497,96 @@ struct ModelDownloadTests {
                 current: [],
                 items: items
             ) == [refreshedE4B.id]
+        )
+    }
+
+    @Test("Embedding model storage keeps its tokenizer grouped")
+    @MainActor
+    func embeddingStorageGrouping() async throws {
+        let fixture = try ModelDownloadFixture()
+        defer { fixture.cleanUp() }
+        let defaultsName = "EmbeddingOwnershipTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+
+        let tokenizerData = Data("tokenizer".utf8)
+        let modelData = Data("embedding".utf8)
+        let tokenizer = fixtureFile(
+            model: .embeddingGemmaTokenizer,
+            fileName: DownloadableModel.embeddingGemmaTokenizer.fileName,
+            data: tokenizerData
+        )
+        let embedding = fixtureFile(
+            model: .embeddingGemma,
+            fileName: DownloadableModel.embeddingGemma.fileName,
+            data: modelData
+        )
+        let manager = ModelLibrary(
+            downloadService: fixture.service(
+                hub: FixtureModelHub(
+                    payloads: [
+                        tokenizer.descriptor.fileName: tokenizerData,
+                        embedding.descriptor.fileName: modelData
+                    ]
+                )
+            ),
+            installationDefaults: defaults
+        )
+        let plan = DownloadPlan(
+            requestedModel: .embeddingGemma,
+            files: [tokenizer, embedding],
+            dependencyAlreadyInstalled: false,
+            policy: .install
+        )
+
+        _ = try await manager.download(plan: plan) { _ in }
+        let items = manager.storageItems(
+            from: [
+                LocalModel(
+                    url: fixture.modelsDirectory.appending(
+                        path: tokenizer.descriptor.fileName
+                    ),
+                    isBundled: false,
+                    origin: .approved
+                ),
+                LocalModel(
+                    url: fixture.modelsDirectory.appending(
+                        path: embedding.descriptor.fileName
+                    ),
+                    isBundled: false,
+                    origin: .approved
+                )
+            ]
+        )
+        let tokenizerItem = try #require(
+            items.first { $0.record.model == .embeddingGemmaTokenizer }
+        )
+        let embeddingItem = try #require(
+            items.first { $0.record.model == .embeddingGemma }
+        )
+
+        #expect(tokenizerItem.record.requiredBy == [.embeddingGemma])
+        #expect(
+            manager.deletionSelection(
+                toggling: embeddingItem,
+                isSelected: true,
+                current: [],
+                items: items
+            ) == [embeddingItem.id, tokenizerItem.id]
+        )
+        #expect(
+            manager.deletionPlan(
+                selection: [tokenizerItem.id],
+                items: items
+            ).ids == [embeddingItem.id, tokenizerItem.id]
+        )
+        #expect(
+            manager.deletionSelection(
+                toggling: tokenizerItem,
+                isSelected: false,
+                current: [embeddingItem.id, tokenizerItem.id],
+                items: items
+            ).isEmpty
         )
     }
 }
@@ -722,13 +940,17 @@ private func fixtureFile(
     .joined()
     let descriptor = ModelDescriptor(
         model: model,
-        repositoryNamespace: "fixture",
-        repositoryName: "fixture",
-        revision: "fixture-revision",
         fileName: fileName,
-        xetHash: String(repeating: "0", count: 64),
         sha256: digest,
-        dependencies: model == .e4b ? [.e2b] : []
+        dependencies: model == .e4b ? [.e2b] : [],
+        source: .huggingFace(
+            HuggingFaceModelSource(
+                namespace: "fixture",
+                name: "fixture",
+                revision: "fixture-revision",
+                xetHash: String(repeating: "0", count: 64)
+            )
+        )
     )
     return DownloadFile(
         descriptor: descriptor,
@@ -765,4 +987,57 @@ nonisolated private enum FixtureError: Error {
     case missingMetadata
     case missingPayload
     case rejected
+}
+
+nonisolated private final class DirectDownloadURLProtocol:
+    URLProtocol,
+    @unchecked Sendable {
+    nonisolated(unsafe) private static var response = (
+        statusCode: 200,
+        data: Data()
+    )
+
+    static func session(
+        statusCode: Int,
+        data: Data
+    ) -> URLSession {
+        response = (statusCode, data)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DirectDownloadURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(
+        for request: URLRequest
+    ) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                  url: url,
+                  statusCode: Self.response.statusCode,
+                  httpVersion: nil,
+                  headerFields: [
+                      "Content-Length": "\(Self.response.data.count)"
+                  ]
+              ) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        client?.urlProtocol(
+            self,
+            didReceive: response,
+            cacheStoragePolicy: .notAllowed
+        )
+        client?.urlProtocol(self, didLoad: Self.response.data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

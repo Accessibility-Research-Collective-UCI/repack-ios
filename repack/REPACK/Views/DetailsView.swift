@@ -12,6 +12,10 @@ struct DetailsView: View {
                 DetailSection("Models") {
                     LabeledContent("Image Captioning", value: visionModelName)
                     LabeledContent("Information Verification", value: verificationModelName)
+                    LabeledContent(
+                        "Scoring",
+                        value: result.scoringMetric.generationDetailsName
+                    )
                 }
 
                 DetailSection("Prompt") {
@@ -34,7 +38,8 @@ struct DetailsView: View {
                 )
                 AtomicScores(
                     atomics: result.scoredAtomics,
-                    retainedStatements: Set(result.retainedAtomics)
+                    retainedStatements: Set(result.retainedAtomics),
+                    scoringMetric: result.scoringMetric
                 )
             }
             .frame(maxWidth: .infinity, alignment: .leading)

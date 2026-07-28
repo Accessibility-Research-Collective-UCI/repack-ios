@@ -19,6 +19,7 @@ protocol ModelDownloadExecutionCoordinating: AnyObject {
 }
 
 @MainActor
+/// Protects long model transfers with continued-processing tasks when possible.
 final class ModelDownloadExecutionCoordinator: ModelDownloadExecutionCoordinating {
     static let shared = ModelDownloadExecutionCoordinator()
     static let taskIdentifierPrefix = "com.uci.repack-tester.model-download."

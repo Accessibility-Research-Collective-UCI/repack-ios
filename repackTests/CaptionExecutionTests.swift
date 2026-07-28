@@ -151,6 +151,19 @@ struct CaptionExecutionTests {
         store.save(run)
         #expect(store.load() == run)
 
+        let legacyData = try JSONSerialization.data(
+            withJSONObject: [
+                "imageFilename": "legacy.jpg",
+                "modelFilename": "legacy.litertlm",
+                "promptChoice": "describe",
+                "customPrompt": "",
+                "sampleCount": 5,
+                "threshold": 0.5
+            ]
+        )
+        defaults.set(legacyData, forKey: "repack.pendingCaptionRun")
+        #expect(store.load()?.scoringMetric == .bleu)
+
         defaults.set(Data("not JSON".utf8), forKey: "repack.pendingCaptionRun")
         #expect(store.load() == nil)
         #expect(defaults.data(forKey: "repack.pendingCaptionRun") == nil)

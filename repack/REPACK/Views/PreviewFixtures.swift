@@ -27,19 +27,34 @@ extension AppModel {
     }
 
     static var previewOutput: AppModel {
-        previewOutput(sampleAtomizationStatus: .parsed)
+        previewOutput(
+            sampleAtomizationStatus: .parsed,
+            scoringMetric: .bleu
+        )
+    }
+
+    static var previewSemanticOutput: AppModel {
+        previewOutput(
+            sampleAtomizationStatus: .parsed,
+            scoringMetric: .semanticSimilarity
+        )
     }
 
     static var previewOutputWithAtomizationWarning: AppModel {
-        previewOutput(sampleAtomizationStatus: .unparseable)
+        previewOutput(
+            sampleAtomizationStatus: .unparseable,
+            scoringMetric: .bleu
+        )
     }
 
     private static func previewOutput(
-        sampleAtomizationStatus: AtomizationStatus
+        sampleAtomizationStatus: AtomizationStatus,
+        scoringMetric: ScoringMetric
     ) -> AppModel {
         let model = previewModel(phase: .output)
         model.selectedImageURL = previewImageURL
-        model.threshold = 0.5
+        model.scoringMetric = scoringMetric
+        model.threshold = scoringMetric.threshold.defaultValue
         let captions = [
             CaptionSample(
                 index: 0,
@@ -84,7 +99,8 @@ extension AppModel {
             ],
             retainedAtomics: ["A red can is visible."],
             caption: "A red can is visible.",
-            threshold: 0.5,
+            threshold: scoringMetric.threshold.defaultValue,
+            scoringMetric: scoringMetric,
             timings: [
                 StageTiming(stage: .sampling, duration: .seconds(4.2)),
                 StageTiming(stage: .atomizing, duration: .seconds(2.1)),

@@ -59,6 +59,13 @@ final class AppModel {
             invalidateCompletedResult()
         }
     }
+    var scoringMetric: ScoringMetric = .bleu {
+        didSet {
+            guard scoringMetric != oldValue else { return }
+            threshold = scoringMetric.threshold.defaultValue
+            invalidateCompletedResult()
+        }
+    }
     var threshold = 0.5
     var progress: PipelineProgress?
     var result: CaptionResult?
@@ -110,7 +117,7 @@ final class AppModel {
     }
     var selectedModelName: String {
         guard let modelURL else {
-            return String(localized: "No model selected")
+            return String(localized: "Select which model to caption with")
         }
         return DownloadableModel.displayName(for: modelURL)
     }
@@ -147,6 +154,22 @@ final class AppModel {
 
     func supportsDownload(_ model: DownloadableModel) -> Bool {
         model != .e4b || devicePolicy.allowsE4B
+    }
+
+    func isModelInstalled(_ model: DownloadableModel) -> Bool {
+        modelManager.isInstalled(model)
+    }
+
+    var defaultScoringMetric: ScoringMetric {
+        Self.defaultScoringMetric(
+            embeddingModelInstalled: isModelInstalled(.embeddingGemma)
+        )
+    }
+
+    nonisolated static func defaultScoringMetric(
+        embeddingModelInstalled: Bool
+    ) -> ScoringMetric {
+        embeddingModelInstalled ? .semanticSimilarity : .bleu
     }
 
     var isBusy: Bool {
@@ -208,6 +231,20 @@ final class AppModel {
         isEngineReady
             && selectedImageURL != nil
             && !samplePrompt.resolvedText.isEmpty
+            && (scoringMetric == .bleu || semanticScoringAvailable)
+    }
+
+    var semanticScoringAvailable: Bool {
+        EmbeddingModelResources.available() != nil
+    }
+
+    var scoringModelName: String {
+        switch scoringMetric {
+        case .bleu:
+            String(localized: "Lexical Similarity")
+        case .semanticSimilarity:
+            EmbeddingModelResources.displayName
+        }
     }
 
     var shouldOfferRestart: Bool {

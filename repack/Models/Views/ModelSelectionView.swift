@@ -1,6 +1,7 @@
 import Accessibility
 import SwiftUI
 
+/// Selects an installed image-captioning model.
 struct ModelSelectionView: View {
     @Bindable var model: AppModel
     @Environment(\.dismiss) private var dismiss

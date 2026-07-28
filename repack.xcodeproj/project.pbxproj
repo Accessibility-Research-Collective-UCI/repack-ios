@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		2217BE96301449ED00ECC1F0 /* LiteRTLM in Frameworks */ = {isa = PBXBuildFile; productRef = 2217BE95301449ED00ECC1F0 /* LiteRTLM */; };
 		C0DE00000000000000000003 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE00000000000000000002 /* HuggingFace */; };
+		EBED00000000000000000003 /* SentencepieceTokenizer in Frameworks */ = {isa = PBXBuildFile; productRef = EBED00000000000000000002 /* SentencepieceTokenizer */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +59,7 @@
 			files = (
 				2217BE96301449ED00ECC1F0 /* LiteRTLM in Frameworks */,
 				C0DE00000000000000000003 /* HuggingFace in Frameworks */,
+				EBED00000000000000000003 /* SentencepieceTokenizer in Frameworks */,
 			);
 		};
 		B1E000000000000000000003 /* Frameworks */ = {
@@ -107,6 +109,7 @@
 			packageProductDependencies = (
 				2217BE95301449ED00ECC1F0 /* LiteRTLM */,
 				C0DE00000000000000000002 /* HuggingFace */,
+				EBED00000000000000000002 /* SentencepieceTokenizer */,
 			);
 			productName = tester;
 			productReference = 22171F7B3013F12100756490 /* REPACK Cap.app */;
@@ -164,6 +167,7 @@
 			packageReferences = (
 				2217BE94301449ED00ECC1F0 /* XCLocalSwiftPackageReference "../LiteRT-LM" */,
 				C0DE00000000000000000001 /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				EBED00000000000000000001 /* XCRemoteSwiftPackageReference "swift-sentencepiece" */,
 			);
 			preferredProjectObjectVersion = 100;
 			productRefGroup = 22171F7C3013F12100756490 /* Products */;
@@ -209,7 +213,7 @@
 				"SOURCE_MODELS=\"${SRCROOT}/DevelopmentAssets/Models\"",
 				"DESTINATION_MODELS=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/DevelopmentModels\"",
 				"mkdir -p \"${DESTINATION_MODELS}\"",
-				"rsync -a --delete --include='*.litertlm' --exclude='*' \"${SOURCE_MODELS}/\" \"${DESTINATION_MODELS}/\"",
+				"rsync -a --delete --include='*.litertlm' --include='embeddinggemma-300M_seq256_mixed-precision.tflite' --include='sentencepiece.model' --exclude='*' \"${SOURCE_MODELS}/\" \"${DESTINATION_MODELS}/\"",
 				"",
 			);
 		};
@@ -398,7 +402,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.5;
-				MARKETING_VERSION = 0.0.1;
+				MARKETING_VERSION = 0.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.uci.repack-tester";
 				PRODUCT_MODULE_NAME = repack;
 				PRODUCT_NAME = "REPACK Cap";
@@ -416,6 +420,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "repack/REPACK-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -455,7 +460,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.5;
-				MARKETING_VERSION = 0.0.1;
+				MARKETING_VERSION = 0.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.uci.repack-tester";
 				PRODUCT_MODULE_NAME = repack;
 				PRODUCT_NAME = "REPACK Cap";
@@ -467,6 +472,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "repack/REPACK-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -570,6 +576,14 @@
 				Xet,
 			);
 		};
+		EBED00000000000000000001 /* XCRemoteSwiftPackageReference "swift-sentencepiece" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jkrukowski/swift-sentencepiece.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.0.6;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -581,6 +595,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C0DE00000000000000000001 /* XCRemoteSwiftPackageReference "swift-huggingface" */;
 			productName = HuggingFace;
+		};
+		EBED00000000000000000002 /* SentencepieceTokenizer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EBED00000000000000000001 /* XCRemoteSwiftPackageReference "swift-sentencepiece" */;
+			productName = SentencepieceTokenizer;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -50,12 +50,20 @@ struct HomeImageSection: View {
 
     @ViewBuilder
     private var imageButtons: some View {
+        let iconColor = imageButtonTint
+
         PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-            Label("Photos", systemImage: "photo")
+            Label {
+                Text("Photos")
+            } icon: {
+                Image(systemName: "photo")
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(iconColor)
+            }
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
-        .disabled(!model.isEngineReady)
+        .disabled(!imageButtonsEnabled)
 
         Button {
             if UIImagePickerController.isSourceTypeAvailable(.camera) {
@@ -64,10 +72,24 @@ struct HomeImageSection: View {
                 model.errorMessage = String(localized: "Camera is not available on this device.")
             }
         } label: {
-            Label("Camera", systemImage: "camera")
+            Label {
+                Text("Camera")
+            } icon: {
+                Image(systemName: "camera")
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(iconColor)
+            }
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
-        .disabled(!model.isEngineReady)
+        .disabled(!imageButtonsEnabled)
+    }
+
+    private var imageButtonsEnabled: Bool {
+        model.isEngineReady
+    }
+
+    private var imageButtonTint: Color {
+        imageButtonsEnabled ? .accentColor : .secondary
     }
 }

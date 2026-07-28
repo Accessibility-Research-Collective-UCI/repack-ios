@@ -42,10 +42,48 @@ struct REPACKTests {
         #expect(viewModel.promptDisplayText == "Focus on readable text.")
     }
 
-    @Test("Verification defaults to fifty percent")
+    @Test("Scoring metrics use distinct labels, ranges, and defaults")
     func defaultVerificationThreshold() {
         let viewModel = AppModel()
 
+        #expect(viewModel.threshold == 0.5)
+        #expect(viewModel.scoringMetric == .bleu)
+        #expect(
+            AppModel.defaultScoringMetric(embeddingModelInstalled: false)
+                == .bleu
+        )
+        #expect(
+            AppModel.defaultScoringMetric(embeddingModelInstalled: true)
+                == .semanticSimilarity
+        )
+        #expect(ScoringMetric.bleu.title == "Lexical Similarity")
+        #expect(ScoringMetric.bleu.threshold.range == 0...1)
+        #expect(ScoringMetric.bleu.threshold.tickSpacing == 0.1)
+        #expect(ScoringMetric.bleu.threshold.ticks.count == 11)
+        #expect(ScoringMetric.bleu.threshold.normalized(1.2) == 1)
+        #expect(
+            ScoringMetric.bleu.generationDetailsName
+                == "Lexical Similarity (BLEU-1)"
+        )
+
+        viewModel.scoringMetric = .semanticSimilarity
+
+        #expect(viewModel.threshold == 0.75)
+        #expect(ScoringMetric.semanticSimilarity.threshold.range == 0.6...1)
+        #expect(ScoringMetric.semanticSimilarity.threshold.tickSpacing == 0.05)
+        let semanticTicks = ScoringMetric.semanticSimilarity.threshold.ticks
+        #expect(semanticTicks.count == 9)
+        #expect(abs(semanticTicks[3] - 0.75) < 0.000_001)
+        #expect(
+            ScoringMetric.semanticSimilarity.threshold.normalized(0.743)
+                == 0.74
+        )
+        #expect(
+            ScoringMetric.semanticSimilarity.generationDetailsName
+                == "Semantic Similarity (Embedding Gemma 300)"
+        )
+
+        viewModel.scoringMetric = .bleu
         #expect(viewModel.threshold == 0.5)
     }
 
@@ -77,6 +115,7 @@ struct REPACKTests {
         #expect(abs(result.scoredAtomics[1].averageScore - 0.25) <= 1e-12)
         #expect(result.retainedAtomics == ["red can"])
         #expect(result.caption == "red can")
+        #expect(result.scoringMetric == .bleu)
         #expect(progress.contains(.sampling(completed: 3, total: 3)))
         #expect(progress.contains(.atomizing(completed: 3, total: 3)))
 
@@ -89,6 +128,62 @@ struct REPACKTests {
         #expect(fixture.factory.visionState.captionSeeds.count == captionCallCount)
         #expect(fixture.factory.textState.atomizedCaptions.count == atomizeCallCount)
         #expect(fixture.factory.textState.repackagedAtomics.count == 2)
+    }
+
+    @Test("Semantic embedding preparation overlaps later atomization")
+    func semanticPipeline() async throws {
+        let fixture = Fixture()
+        fixture.factory.textState.atomizationDelay = .milliseconds(100)
+        let embeddingProvider = FakeTextEmbeddingProvider(
+            totalCaptionCount: 3
+        ) {
+            fixture.factory.textState.atomizedCaptions.count
+        }
+        let repack = try await REPACKPipeline(
+            samplingModelURL: fixture.modelURL,
+            processingModelURL: fixture.modelURL,
+            engineFactory: fixture.factory,
+            embeddingProvider: embeddingProvider
+        )
+
+        let result = try await repack.process(
+            image: fixture.imageURL,
+            samplePrompt: .describe,
+            sampleCount: 2,
+            threshold: 0.75,
+            scoringMetric: .semanticSimilarity
+        )
+
+        #expect(result.scoringMetric == .semanticSimilarity)
+        #expect(result.scoredAtomics.map(\.averageScore) == [1, 0])
+        #expect(result.retainedAtomics == ["red can"])
+        let requests = await embeddingProvider.requests
+        #expect(requests.count == 3)
+        #expect(requests.contains(["red can", "white logo"]))
+        #expect(requests.contains(["red can"]))
+        #expect(requests.contains(["red can", "blue logo"]))
+        let startedBeforeCompletion =
+            await embeddingProvider.startedBeforeAllAtomization
+        #expect(startedBeforeCompletion)
+    }
+
+    @Test("Semantic scoring requires an embedding provider")
+    func missingSemanticProvider() async throws {
+        let fixture = Fixture()
+        let repack = try await REPACKPipeline(
+            modelURL: fixture.modelURL,
+            engineFactory: fixture.factory
+        )
+
+        await #expect(throws: PipelineError.missingEmbeddingModel) {
+            try await repack.process(
+                image: fixture.imageURL,
+                samplePrompt: .describe,
+                sampleCount: 2,
+                threshold: 0.5,
+                scoringMetric: .semanticSimilarity
+            )
+        }
     }
 
     @Test("An unparseable reference swaps with the first parseable sample")
@@ -323,18 +418,24 @@ struct REPACKTests {
 
     @Test("Scoring uses the reference atomic as the BLEU candidate")
     func scoreDirectionAndEmptySamples() async throws {
-        let fixture = Fixture()
-        let repack = try await REPACKPipeline(
-            modelURL: fixture.modelURL,
-            engineFactory: fixture.factory
+        let scorer: any CaptionScorer = BLEUCaptionScorer()
+        let reference = try await scorer.prepare(
+            captionID: 0,
+            statements: ["red metal can"]
+        )
+        let firstSample = try await scorer.prepare(
+            captionID: 1,
+            statements: ["red can", "blue box"]
+        )
+        let emptySample = try await scorer.prepare(
+            captionID: 2,
+            statements: []
         )
 
-        let results = try await repack.score(
-            referenceAtoms: ["red metal can"],
-            sampleAtoms: [
-                ["red can", "blue box"],
-                []
-            ]
+        let results = try await scorer.score(
+            reference: reference,
+            samples: [firstSample, emptySample],
+            progress: { _, _ in }
         )
 
         let score = try #require(results.first)
@@ -386,6 +487,7 @@ struct REPACKTests {
         await viewModel.selectModel(
             LocalModel(url: fixture.modelURL, isBundled: false)
         )
+        viewModel.scoringMetric = .bleu
         viewModel.selectedImageURL = fixture.imageURL
         viewModel.sampleCount = 2
         viewModel.startProcessing()
@@ -579,6 +681,7 @@ struct REPACKTests {
         await viewModel.selectModel(
             LocalModel(url: fixture.modelURL, isBundled: false)
         )
+        viewModel.scoringMetric = .bleu
         viewModel.selectedImageURL = fixture.imageURL
         viewModel.sampleCount = 2
         viewModel.startProcessing()
@@ -872,6 +975,7 @@ struct REPACKTests {
         await viewModel.selectModel(
             LocalModel(url: fixture.modelURL, isBundled: false)
         )
+        viewModel.scoringMetric = .bleu
         viewModel.selectedImageURL = fixture.imageURL
         viewModel.promptChoice = promptChoice
         viewModel.customPrompt = customPrompt
@@ -961,6 +1065,42 @@ private final class FakeEngineState {
     var repackagedAtomics: [[String]] = []
     var cancellationCount = 0
     var captionDelay: Duration?
+    var atomizationDelay: Duration?
+}
+
+private actor FakeTextEmbeddingProvider: TextEmbeddingProviding {
+    private let totalCaptionCount: Int?
+    private let atomizedCount: (@MainActor @Sendable () -> Int)?
+    private(set) var requests: [[String]] = []
+    private(set) var startedBeforeAllAtomization = false
+
+    init(
+        totalCaptionCount: Int? = nil,
+        atomizedCount: (@MainActor @Sendable () -> Int)? = nil
+    ) {
+        self.totalCaptionCount = totalCaptionCount
+        self.atomizedCount = atomizedCount
+    }
+
+    func embeddings(for statements: [String]) async throws -> [[Float]] {
+        requests.append(statements)
+        if let totalCaptionCount, let atomizedCount,
+           await atomizedCount() < totalCaptionCount {
+            startedBeforeAllAtomization = true
+        }
+        return statements.map { statement in
+            switch statement {
+            case "red can":
+                [1, 0]
+            case "white logo":
+                [0, 1]
+            case "blue logo":
+                [-1, 0]
+            default:
+                [0, 0]
+            }
+        }
+    }
 }
 
 @MainActor
@@ -980,6 +1120,9 @@ private final class FakeInferenceEngine: InferenceEngine {
     }
 
     func atomize(caption: String) async throws -> AtomizationResult {
+        if let atomizationDelay = state.atomizationDelay {
+            try await Task.sleep(for: atomizationDelay)
+        }
         state.atomizedCaptions.append(caption)
         return AtomizationResult(
             statements: state.atomicResponses[caption] ?? [caption],

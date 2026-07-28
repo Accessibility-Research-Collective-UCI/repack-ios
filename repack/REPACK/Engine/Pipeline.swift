@@ -7,7 +7,7 @@ final class REPACKPipeline {
     private let samplingModelURL: URL
     private let processingModelURL: URL
     private let engineFactory: any EngineFactory
-    private let scorer: any CaptionScorer
+    private let scorers: [ScoringMetric: any CaptionScorer]
     private let devicePolicy: DevicePolicy
     private let memoryProvider: any MemoryProviding
     private let clock = ContinuousClock()
@@ -54,14 +54,24 @@ final class REPACKPipeline {
         engineFactory: any EngineFactory,
         devicePolicy: DevicePolicy = .current,
         memoryProvider: any MemoryProviding = SystemMemoryProvider(),
-        scorer: any CaptionScorer = BLEUCaptionScorer()
+        scorer: any CaptionScorer = BLEUCaptionScorer(),
+        embeddingProvider: (any TextEmbeddingProviding)? = nil
     ) async throws {
         self.samplingModelURL = samplingModelURL
         self.processingModelURL = processingModelURL
         self.engineFactory = engineFactory
         self.devicePolicy = devicePolicy
         self.memoryProvider = memoryProvider
-        self.scorer = scorer
+        var scorers: [ScoringMetric: any CaptionScorer] = [
+            scorer.metric: scorer
+        ]
+        if let embeddingProvider {
+            let semanticScorer = SemanticCaptionScorer(
+                embeddingProvider: embeddingProvider
+            )
+            scorers[semanticScorer.metric] = semanticScorer
+        }
+        self.scorers = scorers
 
         MemoryDiagnostics.log("Before REPACK engine initialization")
         debugLog(
@@ -128,9 +138,13 @@ extension REPACKPipeline {
         samplePrompt: CaptionPrompt,
         sampleCount: Int,
         threshold: Double,
+        scoringMetric: ScoringMetric = .bleu,
         progress: ProgressHandler? = nil
     ) async throws -> CaptionResult {
         try validate(threshold: threshold)
+        guard let scorer = scorers[scoringMetric] else {
+            throw PipelineError.missingEmbeddingModel
+        }
         cachedResult = nil
         progressHandler = progress
         defer { progressHandler = nil }
@@ -149,7 +163,11 @@ extension REPACKPipeline {
         MemoryDiagnostics.log("Sampling stage complete")
 
         let atomizingStart = clock.now
-        let atomizedCaptions = try await atomize(captions: captions)
+        let atomizationBatch = try await atomize(
+            captions: captions,
+            scorer: scorer
+        )
+        let atomizedCaptions = atomizationBatch.captions
         let resultCaptions = atomizedCaptions.map(\.caption)
         let atomizingTiming = StageTiming(
             stage: .atomizing,
@@ -160,7 +178,8 @@ extension REPACKPipeline {
         MemoryDiagnostics.log("Atomization stage complete")
 
         let scoredAtomics = try await score(
-            atomizedCaptions: atomizedCaptions,
+            atomizationBatch: atomizationBatch,
+            scorer: scorer,
             timings: &timings
         )
 
@@ -186,6 +205,7 @@ extension REPACKPipeline {
             retainedAtomics: retainedAtomics,
             caption: repackedCaption,
             threshold: threshold,
+            scoringMetric: scoringMetric,
             timings: timings
         )
         cachedResult = result
@@ -248,21 +268,6 @@ extension REPACKPipeline {
             throw PipelineError.missingTextEngine
         }
         return try await processingEngine.atomize(caption: caption)
-    }
-
-    func score(
-        referenceAtoms: [String],
-        sampleAtoms: [[String]]
-    ) async throws -> [ScoredAtomic] {
-        let results = try await scorer.score(
-            referenceAtomics: referenceAtoms,
-            sampleAtomics: sampleAtoms
-        ) { [weak self] completed, total in
-            self?.emit(.scoring(completed: completed, total: total))
-        }
-        results.forEach { debugLog($0.debugDescription) }
-        debugLog("BLEU scoring complete for \(results.count) reference atomics.")
-        return results
     }
 
     func repackage(
@@ -375,46 +380,76 @@ private extension REPACKPipeline {
     }
 
     private func atomize(
-        captions: [CaptionSample]
-    ) async throws -> [AtomizedCaption] {
-        var atomizedCaptions: [AtomizedCaption] = []
-        atomizedCaptions.reserveCapacity(captions.count)
+        captions: [CaptionSample],
+        scorer: any CaptionScorer
+    ) async throws -> AtomizationBatch {
+        return try await withThrowingTaskGroup(
+            of: PreparedCaptionScoringInput.self
+        ) { group in
+            var atomizedCaptions: [AtomizedCaption] = []
+            atomizedCaptions.reserveCapacity(captions.count)
 
-        for caption in captions {
-            try Task.checkCancellation()
-            emit(.atomizing(completed: atomizedCaptions.count, total: captions.count))
-            let result = try await atomize(caption: caption.text)
-            atomizedCaptions.append(
-                AtomizedCaption(
-                    caption: caption,
-                    statements: result.statements,
-                    status: result.status
+            for caption in captions {
+                try Task.checkCancellation()
+                emit(.atomizing(completed: atomizedCaptions.count, total: captions.count))
+                let result = try await atomize(caption: caption.text)
+                atomizedCaptions.append(
+                    AtomizedCaption(
+                        caption: caption,
+                        statements: result.statements,
+                        status: result.status
+                    )
+                )
+                let captionID = caption.id
+                let statements = result.statements
+                group.addTask {
+                    try await scorer.prepare(
+                        captionID: captionID,
+                        statements: statements
+                    )
+                }
+                debugLog(
+                    "Atomized caption \(caption.index) into \(result.statements.count) statements "
+                        + "[\(String(describing: result.status))]:\n"
+                        + result.statements.debugList
+                )
+                MemoryDiagnostics.log("Atomized caption \(caption.index)")
+                emit(.atomizing(completed: atomizedCaptions.count, total: captions.count))
+            }
+
+            var preparedByCaptionID: [Int: PreparedCaptionScoringInput] = [:]
+            for try await prepared in group {
+                preparedByCaptionID[prepared.captionID] = prepared
+            }
+            let preparedCaptions = try captions.map { caption in
+                guard let prepared = preparedByCaptionID[caption.id] else {
+                    throw SemanticScoringError.statementVectorCountMismatch
+                }
+                return prepared
+            }
+
+            return promotingReferenceIfNeeded(
+                in: AtomizationBatch(
+                    captions: atomizedCaptions,
+                    preparedCaptions: preparedCaptions
                 )
             )
-            debugLog(
-                "Atomized caption \(caption.index) into \(result.statements.count) statements "
-                    + "[\(String(describing: result.status))]:\n"
-                    + result.statements.debugList
-            )
-            MemoryDiagnostics.log("Atomized caption \(caption.index)")
-            emit(.atomizing(completed: atomizedCaptions.count, total: captions.count))
         }
-
-        return promotingReferenceIfNeeded(in: atomizedCaptions)
     }
 
     private func promotingReferenceIfNeeded(
-        in atomizedCaptions: [AtomizedCaption]
-    ) -> [AtomizedCaption] {
-        guard let failedReference = atomizedCaptions.first,
+        in batch: AtomizationBatch
+    ) -> AtomizationBatch {
+        guard let failedReference = batch.captions.first,
               failedReference.status == .unparseable,
-              let promotedIndex = atomizedCaptions.dropFirst().firstIndex(where: {
+              let promotedIndex = batch.captions.dropFirst().firstIndex(where: {
                   $0.status == .parsed && !$0.statements.isEmpty
               }) else {
-            return atomizedCaptions
+            return batch
         }
 
-        var reordered = atomizedCaptions
+        var reordered = batch.captions
+        var preparedCaptions = batch.preparedCaptions
         let promoted = reordered[promotedIndex]
 
         // If the reference caption is not parsable into atomics, switch it with the first valid caption.
@@ -436,21 +471,38 @@ private extension REPACKPipeline {
             statements: failedReference.statements,
             status: failedReference.status
         )
+        preparedCaptions.swapAt(0, promotedIndex)
         debugLog(
             "Promoted sample \(promoted.caption.index) after the original caption "
                 + "could not be atomized."
         )
-        return reordered
+        return AtomizationBatch(
+            captions: reordered,
+            preparedCaptions: preparedCaptions
+        )
     }
 
     private func score(
-        atomizedCaptions: [AtomizedCaption],
+        atomizationBatch: AtomizationBatch,
+        scorer: any CaptionScorer,
         timings: inout [StageTiming]
     ) async throws -> [ScoredAtomic] {
         let start = clock.now
-        let scoredAtomics = try await score(
-            referenceAtoms: atomizedCaptions.first?.statements ?? [],
-            sampleAtoms: atomizedCaptions.dropFirst().map(\.statements)
+        guard let reference = atomizationBatch.preparedCaptions.first else {
+            return []
+        }
+        let scoredAtomics = try await scorer.score(
+            reference: reference,
+            samples: Array(atomizationBatch.preparedCaptions.dropFirst())
+        ) { [weak self] completed, total in
+            self?.emit(.scoring(completed: completed, total: total))
+        }
+        scoredAtomics.forEach {
+            debugLog($0.debugDescription(metric: scorer.metric))
+        }
+        debugLog(
+            "\(scorer.metric.title) scoring complete for "
+                + "\(scoredAtomics.count) reference atomics."
         )
         let timing = StageTiming(
             stage: .scoring,
@@ -496,6 +548,11 @@ private extension REPACKPipeline {
     }
 }
 
+private struct AtomizationBatch {
+    let captions: [AtomizedCaption]
+    let preparedCaptions: [PreparedCaptionScoringInput]
+}
+
 private extension Array where Element == String {
     var debugList: String {
         isEmpty
@@ -505,7 +562,7 @@ private extension Array where Element == String {
 }
 
 private extension ScoredAtomic {
-    var debugDescription: String {
+    func debugDescription(metric: ScoringMetric = .bleu) -> String {
         let formattedAverage = averageScore.formatted(
             .number.precision(.fractionLength(4))
         )
@@ -515,7 +572,7 @@ private extension ScoredAtomic {
         }.joined(separator: "\n")
 
         return """
-            BLEU for reference atomic \(index): \(statement)
+            \(metric.title) for reference atomic \(index): \(statement)
             \(formattedMatches)
               Average: \(formattedAverage)
             """

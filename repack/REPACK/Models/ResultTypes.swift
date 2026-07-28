@@ -31,6 +31,7 @@ nonisolated struct CaptionResult: Equatable, Sendable {
     let retainedAtomics: [String]
     let caption: String
     let threshold: Double
+    let scoringMetric: ScoringMetric
     let timings: [StageTiming]
 
     func replacingRepackage(
@@ -49,6 +50,7 @@ nonisolated struct CaptionResult: Equatable, Sendable {
             retainedAtomics: retainedAtomics,
             caption: caption,
             threshold: threshold,
+            scoringMetric: scoringMetric,
             timings: updatedTimings
         )
     }

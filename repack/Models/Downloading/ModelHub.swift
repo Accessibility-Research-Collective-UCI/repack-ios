@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import HuggingFace
 import Xet
@@ -16,28 +15,43 @@ nonisolated protocol ModelHubDownloading: Sendable {
     func cancelDownload() async
 }
 
+/// Resolves both Hugging Face/Xet and direct HTTP model sources.
 actor SwiftHuggingFaceModelHub: ModelHubDownloading {
     private let client: HubClient
     private var activeDownloader: XetDownloader?
+    private var activeDirectDownload: DirectHTTPDownloader?
 
     init(client: HubClient = HubClient(cache: nil)) {
         self.client = client
     }
 
     func fileSize(for descriptor: ModelDescriptor) async throws -> Int64 {
-        let files = try await client.listFiles(
-            in: repositoryID(for: descriptor),
-            kind: .model,
-            revision: descriptor.revision,
-            recursive: true
-        )
-        guard
-            let size = files.first(where: { $0.path == descriptor.fileName })?.size,
-            size > 0
-        else {
-            throw DownloadError.missingFileMetadata(model: descriptor.model)
+        switch descriptor.source {
+        case .direct(let url):
+            var request = URLRequest(url: url)
+            request.httpMethod = "HEAD"
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let response = response as? HTTPURLResponse,
+                  200..<300 ~= response.statusCode,
+                  response.expectedContentLength > 0 else {
+                throw DownloadError.missingFileMetadata(model: descriptor.model)
+            }
+            return response.expectedContentLength
+        case .huggingFace(let source):
+            let files = try await client.listFiles(
+                in: repositoryID(for: source),
+                kind: .model,
+                revision: source.revision,
+                recursive: true
+            )
+            guard
+                let size = files.first(where: { $0.path == descriptor.fileName })?.size,
+                size > 0
+            else {
+                throw DownloadError.missingFileMetadata(model: descriptor.model)
+            }
+            return Int64(size)
         }
-        return Int64(size)
     }
 
     func download(
@@ -46,9 +60,33 @@ actor SwiftHuggingFaceModelHub: ModelHubDownloading {
         to destination: URL,
         progressHandler: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
+        let huggingFaceSource: HuggingFaceModelSource
+        switch descriptor.source {
+        case .direct(let url):
+            let download = DirectHTTPDownloader()
+            activeDirectDownload = download
+            defer { activeDirectDownload = nil }
+            do {
+                return try await download.download(
+                    from: url,
+                    expectedByteCount: byteCount,
+                    to: destination,
+                    progressHandler: progressHandler
+                )
+            } catch {
+                if Task.isCancelled
+                    || (error as? URLError)?.code == .cancelled {
+                    throw CancellationError()
+                }
+                throw error
+            }
+        case .huggingFace(let source):
+            huggingFaceSource = source
+        }
+
         let packageProgress = Progress(totalUnitCount: 0)
         let downloader = XetDownloader(
-            refreshURL: xetRefreshURL(for: descriptor)
+            refreshURL: xetRefreshURL(for: huggingFaceSource)
         )
         activeDownloader = downloader
 
@@ -84,7 +122,7 @@ actor SwiftHuggingFaceModelHub: ModelHubDownloading {
         do {
             _ = try await withTaskCancellationHandler {
                 try await downloader.download(
-                    descriptor.xetHash,
+                    huggingFaceSource.xetHash,
                     to: destination
                 )
             } onCancel: { [weak self] in
@@ -112,6 +150,8 @@ actor SwiftHuggingFaceModelHub: ModelHubDownloading {
     }
 
     func cancelDownload() async {
+        activeDirectDownload?.cancel()
+        activeDirectDownload = nil
         guard let activeDownloader else { return }
         self.activeDownloader = nil
         try? await activeDownloader.shutdown()
@@ -133,23 +173,23 @@ actor SwiftHuggingFaceModelHub: ModelHubDownloading {
     }
 
     private func repositoryID(
-        for descriptor: ModelDescriptor
+        for source: HuggingFaceModelSource
     ) -> Repo.ID {
         Repo.ID(
-            namespace: descriptor.repositoryNamespace,
-            name: descriptor.repositoryName
+            namespace: source.namespace,
+            name: source.name
         )
     }
 
     private func xetRefreshURL(
-        for descriptor: ModelDescriptor
+        for source: HuggingFaceModelSource
     ) -> URL {
         URL(string: "https://huggingface.co")!
             .appending(path: "api")
             .appending(path: "models")
-            .appending(path: descriptor.repositoryNamespace)
-            .appending(path: descriptor.repositoryName)
+            .appending(path: source.namespace)
+            .appending(path: source.name)
             .appending(path: "xet-read-token")
-            .appending(path: descriptor.revision)
+            .appending(path: source.revision)
     }
 }

@@ -8,6 +8,9 @@ extension AppModel {
         await modelManager.cleanDownloadStagingDirectory()
         try? await imageStore.removeOrphans(keeping: ownedImageURLs)
         await refreshLocalModels(preferredModelFilename: pendingRun?.modelFilename)
+        if pendingRun == nil {
+            scoringMetric = defaultScoringMetric
+        }
     }
 
     func refreshLocalModels(preferredModelFilename: String? = nil) async {
@@ -35,6 +38,10 @@ extension AppModel {
 
         if modelURL == nil || selectionChanged || pipeline == nil {
             phase = .missingModel
+        }
+        if scoringMetric == .semanticSimilarity,
+           !isModelInstalled(.embeddingGemma) {
+            scoringMetric = .bleu
         }
     }
 
@@ -91,7 +98,11 @@ extension AppModel {
         let removesSelectedModel = plan.items.contains {
             ModelLibrary.sameFile($0.model.url, modelURL)
         }
-        if removesSelectedModel {
+        let removesEmbeddingModel = plan.items.contains {
+            $0.record.model == .embeddingGemma
+                || $0.record.model == .embeddingGemmaTokenizer
+        }
+        if removesSelectedModel || removesEmbeddingModel {
             await discardPipelineAndRun()
         }
 
@@ -215,6 +226,9 @@ extension AppModel {
                 switch outcome {
                 case .installed:
                     await refreshLocalModels()
+                    if plan.requestedModel == .embeddingGemma {
+                        scoringMetric = .semanticSimilarity
+                    }
                 case .validatedAndRemoved:
                     break
                 }
@@ -382,13 +396,15 @@ extension AppModel {
         let prompt = samplePrompt
         let count = sampleCount
         let requestedThreshold = threshold
+        let requestedScoringMetric = scoringMetric
         let runID = UUID()
         currentRunID = runID
         savePendingRun(
             image: image,
             model: modelURL,
             count: count,
-            threshold: requestedThreshold
+            threshold: requestedThreshold,
+            scoringMetric: requestedScoringMetric
         )
 
         let start: @MainActor @Sendable () -> Void = { [weak self] in
@@ -399,7 +415,8 @@ extension AppModel {
                 image: image,
                 prompt: prompt,
                 count: count,
-                threshold: requestedThreshold
+                threshold: requestedThreshold,
+                scoringMetric: requestedScoringMetric
             )
         }
         let expiration: @MainActor @Sendable () -> Void = { [weak self] in

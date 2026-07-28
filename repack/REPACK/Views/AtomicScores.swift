@@ -3,6 +3,7 @@ import SwiftUI
 struct AtomicScores: View {
     let atomics: [ScoredAtomic]
     let retainedStatements: Set<String>
+    let scoringMetric: ScoringMetric
 
     var body: some View {
         DetailSection("Atomic Statements and Scores") {
@@ -22,7 +23,7 @@ struct AtomicScores: View {
                                     .multilineTextAlignment(.leading)
                                     Text(
                                         match.score,
-                                        format: .percent.precision(.fractionLength(1))
+                                        format: .number.precision(.fractionLength(2))
                                     )
                                     .font(.caption.monospacedDigit())
                                     .foregroundStyle(.secondary)
@@ -54,7 +55,7 @@ struct AtomicScores: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .multilineTextAlignment(.leading)
                 Text(
-                    "BLEU average: \(atomic.averageScore, format: .percent.precision(.fractionLength(1)))"
+                    "\(scoringMetric.scoreLabel): \(atomic.averageScore, format: .number.precision(.fractionLength(2)))"
                 )
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)

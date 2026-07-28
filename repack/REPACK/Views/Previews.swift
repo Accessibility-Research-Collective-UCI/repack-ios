@@ -168,6 +168,17 @@ import SwiftUI
     }
 }
 
+#Preview("Output · Semantic Similarity") {
+    NavigationStack {
+        RunView(
+            model: .previewSemanticOutput,
+            restartAction: {},
+            cancelAction: {},
+            resetAction: {}
+        )
+    }
+}
+
 #Preview("Output · Atomization Warning") {
     NavigationStack {
         RunView(

@@ -15,6 +15,7 @@ struct CaptionSettings: View {
                 VStack { promptButtons }
             }
             .disabled(!model.isEngineReady)
+            .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
 
             if model.promptChoice == .custom {
                 TextField("Caption prompt", text: $model.customPrompt, axis: .vertical)
@@ -23,7 +24,7 @@ struct CaptionSettings: View {
                     .disabled(!model.isEngineReady)
             }
         } header: {
-            Text("Prompt")
+            Text("Captioning Prompt")
         } footer: {
             Text("Product and Describe are built-in prompts for product identification and short general descriptions. Custom lets you provide your own prompt.")
         }
@@ -65,7 +66,7 @@ struct CaptionSettings: View {
         } header: {
             Text("Samples: \(model.sampleCount)")
         } footer: {
-            Text("Number of samples REPACK uses to verify information. More samples can improve verification, but take longer.")
+            Text("REPACK verifies image description information by generating additional descriptions after the first. More samples can improve verification, but will take longer.")
         }
     }
 }
