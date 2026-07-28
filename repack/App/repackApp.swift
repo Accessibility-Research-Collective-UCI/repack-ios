@@ -7,6 +7,11 @@ final class REPACKAppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         CaptionExecutionCoordinator.shared.register()
+        #if DEBUG
+        Task { @MainActor in
+            await runSamplingSettingsProbe()
+        }
+        #endif
         return true
     }
 }
