@@ -235,15 +235,16 @@ extension REPACKPipeline {
         var captions: [CaptionSample] = []
         captions.reserveCapacity(count + 1)
         let total = count + 1
+        let runSeed = Int32.random(in: 1...(Int32.max - Int32(total - 1)))
 
         for index in 0..<total {
             try Task.checkCancellation()
             emit(.sampling(completed: index, total: total))
-            let seed = index + 1
+            let seed = runSeed &+ Int32(index)
             let text = try await samplingEngine.generateCaption(
                 image: image,
                 prompt: promptText,
-                seed: seed
+                seed: Int(seed)
             )
             let caption = CaptionSample(
                 index: index,

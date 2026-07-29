@@ -408,9 +408,6 @@
     "Information Verification" : {
 
     },
-    "Interrupted" : {
-
-    },
     "Interrupted Caption" : {
 
     },
@@ -549,9 +546,6 @@
     "Preparing vision model" : {
 
     },
-    "Processing" : {
-
-    },
     "Product" : {
 
     },
@@ -632,9 +626,6 @@
 
     },
     "Result: %@" : {
-
-    },
-    "Results" : {
 
     },
     "Retained" : {
@@ -742,9 +733,6 @@
           }
         }
       }
-    },
-    "Stopped" : {
-
     },
     "Stops captioning and returns to your setup." : {
 

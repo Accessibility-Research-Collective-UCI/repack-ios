@@ -106,7 +106,7 @@ struct REPACKTests {
         }
 
         #expect(fixture.factory.events == [.validate, .makeVision, .makeText])
-        #expect(fixture.factory.visionState.captionSeeds == [1, 2, 3])
+        #expect(hasConsecutiveCaptionSeeds(fixture.factory.visionState.captionSeeds, count: 3))
         #expect(result.captions.map(\.index) == [0, 1, 2])
         #expect(result.captions.map(\.kind) == [.reference, .sample, .sample])
         #expect(result.atomizedCaptions.count == 3)
@@ -280,7 +280,7 @@ struct REPACKTests {
         #expect(fixture.factory.events == [.validate, .makeVision, .validate, .makeText])
         #expect(fixture.factory.visionModelURLs == [e4BURL])
         #expect(fixture.factory.textModelURLs == [e2BURL])
-        #expect(fixture.factory.visionState.captionSeeds == [1, 2, 3])
+        #expect(hasConsecutiveCaptionSeeds(fixture.factory.visionState.captionSeeds, count: 3))
         #expect(fixture.factory.visionState.atomizedCaptions.isEmpty)
         #expect(fixture.factory.visionState.repackagedAtomics.isEmpty)
         #expect(fixture.factory.textState.atomizedCaptions.count == 3)
@@ -380,7 +380,7 @@ struct REPACKTests {
         #expect(fixture.factory.events == [.validate, .makeVision, .validate, .makeText])
         #expect(fixture.factory.visionEngine == nil)
         #expect(fixture.factory.textEngine != nil)
-        #expect(fixture.factory.visionState.captionSeeds == [1, 2, 3])
+        #expect(hasConsecutiveCaptionSeeds(fixture.factory.visionState.captionSeeds, count: 3))
         #expect(fixture.factory.textState.atomizedCaptions.count == 3)
         #expect(result.caption == "red can")
     }
@@ -1116,7 +1116,8 @@ private final class FakeInferenceEngine: InferenceEngine {
             try await Task.sleep(for: captionDelay)
         }
         state.captionSeeds.append(seed)
-        return state.captionResponses[seed] ?? "caption \(seed)"
+        let sampleNumber = state.captionSeeds.count
+        return state.captionResponses[sampleNumber] ?? "caption \(sampleNumber)"
     }
 
     func atomize(caption: String) async throws -> AtomizationResult {
@@ -1290,4 +1291,13 @@ nonisolated private func modelDownloadPlan(
         dependencyAlreadyInstalled: false,
         policy: policy
     )
+}
+
+private func hasConsecutiveCaptionSeeds(_ seeds: [Int], count: Int) -> Bool {
+    guard seeds.count == count, let first = seeds.first, first > 0 else {
+        return false
+    }
+    return seeds.enumerated().allSatisfy { offset, seed in
+        seed == first + offset
+    }
 }
