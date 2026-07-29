@@ -4,10 +4,16 @@
     "" : {
 
     },
+    "%@ cannot be used on this iPhone." : {
+
+    },
     "%@ could not be verified. No downloaded file was kept." : {
 
     },
     "%@ is already downloaded and verified." : {
+
+    },
+    "%@ seconds" : {
 
     },
     "%@ selected." : {
@@ -38,6 +44,16 @@
     },
     "%lld" : {
 
+    },
+    "%lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld"
+          }
+        }
+      }
     },
     "%lld of %lld captions" : {
       "localizations" : {
@@ -79,6 +95,9 @@
         }
       }
     },
+    "%lld seconds remaining" : {
+
+    },
     "📦 REPACK" : {
 
     },
@@ -91,7 +110,16 @@
     "A higher threshold only retains details that are more consistently supported across caption samples." : {
 
     },
+    "About %@ remaining" : {
+
+    },
+    "Active elapsed" : {
+
+    },
     "Adjusts how consistently a detail must appear." : {
+
+    },
+    "Algorithm" : {
 
     },
     "Already Downloaded" : {
@@ -107,6 +135,12 @@
 
     },
     "Also selects %@ because of model dependencies." : {
+
+    },
+    "Asks for confirmation before discarding the displayed benchmark result." : {
+
+    },
+    "Asks for confirmation before stopping the benchmark." : {
 
     },
     "Atomic Statements and Scores" : {
@@ -128,7 +162,31 @@
     "Atomizing" : {
 
     },
+    "Average" : {
+
+    },
+    "Average per image" : {
+
+    },
     "Background Download Unavailable" : {
+
+    },
+    "Before Starting" : {
+
+    },
+    "Benchmark" : {
+
+    },
+    "Benchmark cancelled." : {
+
+    },
+    "Benchmark interrupted because the app entered the background." : {
+
+    },
+    "Benchmark stopped by the user." : {
+
+    },
+    "Benchmarking %@" : {
 
     },
     "Breaking down captions" : {
@@ -213,6 +271,18 @@
 
     },
     "Compares atomic statements by meaning. Its tokenizer is also included." : {
+
+    },
+    "Completed image results will be retained, but the benchmark cannot be resumed." : {
+
+    },
+    "Cooling down" : {
+
+    },
+    "Copies the complete benchmark result as JSON to the clipboard." : {
+
+    },
+    "Copy JSON" : {
 
     },
     "Custom" : {
@@ -351,7 +421,26 @@
     "EmbeddingGemma returned an invalid embedding." : {
 
     },
+    "Engine Settings" : {
+
+    },
+    "Enter a custom captioning prompt." : {
+
+    },
     "Enter a prompt before captioning the image." : {
+
+    },
+    "Expected %lld benchmark images, but found %lld." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Expected %1$lld benchmark images, but found %2$lld."
+          }
+        }
+      }
+    },
+    "Export JSON" : {
 
     },
     "Gemma 4 E2B" : {
@@ -396,6 +485,9 @@
     "Image captioning models describe the image and break captions into atomic statements." : {
 
     },
+    "Images" : {
+
+    },
     "Imported" : {
 
     },
@@ -408,10 +500,34 @@
     "Information Verification" : {
 
     },
+    "Install %@ for the text engine." : {
+
+    },
+    "Install %@ for the vision engine." : {
+
+    },
+    "Install Embedding Gemma for semantic similarity." : {
+
+    },
+    "Installed" : {
+
+    },
+    "Interrupted" : {
+
+    },
     "Interrupted Caption" : {
 
     },
+    "JSON copied to the clipboard" : {
+
+    },
     "Keep Downloading" : {
+
+    },
+    "Keep Results" : {
+
+    },
+    "Keep Running" : {
 
     },
     "Keep this page open while the models are downloading." : {
@@ -427,6 +543,9 @@
 
     },
     "Loading model" : {
+
+    },
+    "Longest" : {
 
     },
     "Manage Installed Models" : {
@@ -492,6 +611,12 @@
     "More samples can improve verification but take longer." : {
 
     },
+    "New Benchmark" : {
+
+    },
+    "Next image starts in %lld seconds." : {
+
+    },
     "No atomic statement" : {
 
     },
@@ -502,6 +627,9 @@
 
     },
     "No models are installed. Use Manage Installed Models to download one." : {
+
+    },
+    "Not installed" : {
 
     },
     "Not retained" : {
@@ -519,7 +647,13 @@
     "Opens models available on this device." : {
 
     },
+    "Opens the share sheet to AirDrop or export the benchmark JSON file." : {
+
+    },
     "Original Caption" : {
+
+    },
+    "Overall benchmark progress" : {
 
     },
     "Photos" : {
@@ -544,6 +678,12 @@
 
     },
     "Preparing vision model" : {
+
+    },
+    "Processes 25 bundled images with a 15-second cooldown between images." : {
+
+    },
+    "Processing" : {
 
     },
     "Product" : {
@@ -592,6 +732,9 @@
     "REPACK failed. %@" : {
 
     },
+    "REPACK Settings" : {
+
+    },
     "REPACK started." : {
 
     },
@@ -626,6 +769,9 @@
 
     },
     "Result: %@" : {
+
+    },
+    "Results" : {
 
     },
     "Retained" : {
@@ -709,6 +855,12 @@
     "Semantic Similarity requires the EmbeddingGemma model and tokenizer." : {
 
     },
+    "Shortest" : {
+
+    },
+    "Similarity metric" : {
+
+    },
     "Similarity Scorer" : {
 
     },
@@ -716,6 +868,12 @@
 
     },
     "Space to recover: %@" : {
+
+    },
+    "Start a New Benchmark?" : {
+
+    },
+    "Start Benchmark" : {
 
     },
     "Start Over" : {
@@ -734,6 +892,15 @@
         }
       }
     },
+    "Stop Benchmark" : {
+
+    },
+    "Stop Benchmark?" : {
+
+    },
+    "Stopped" : {
+
+    },
     "Stops captioning and returns to your setup." : {
 
     },
@@ -741,6 +908,12 @@
 
     },
     "Tap to brighten" : {
+
+    },
+    "Text model" : {
+
+    },
+    "Text model status" : {
 
     },
     "The atomic statements could not be prepared for repackaging." : {
@@ -813,6 +986,12 @@
         }
       }
     },
+    "Thermal cooldown" : {
+
+    },
+    "These results will no longer be accessible unless you copy or export the JSON first." : {
+
+    },
     "This download will use approximately %@ on this iPhone." : {
 
     },
@@ -825,10 +1004,25 @@
     "Time Elapsed" : {
 
     },
+    "Timing summary" : {
+
+    },
+    "Total" : {
+
+    },
     "Unavailable on this iPhone" : {
 
     },
     "Updating caption…" : {
+
+    },
+    "Uses GPU for language and vision inference. Multi-token prediction is disabled." : {
+
+    },
+    "Uses GPU for language inference. Vision is disabled and multi-token prediction is enabled." : {
+
+    },
+    "Uses REPACK’s default threshold for the selected similarity metric." : {
 
     },
     "Using meaning-based overlap to select information from image description." : {
@@ -844,6 +1038,12 @@
 
     },
     "View Results" : {
+
+    },
+    "Vision model" : {
+
+    },
+    "Vision model status" : {
 
     },
     "Waiting for download to start" : {
