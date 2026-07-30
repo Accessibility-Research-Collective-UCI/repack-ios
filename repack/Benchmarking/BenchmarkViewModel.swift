@@ -115,7 +115,8 @@ final class BenchmarkViewModel {
             )
         }
 
-        if scoringMetric == .semanticSimilarity,
+        if algorithm == .repack,
+           scoringMetric == .semanticSimilarity,
            EmbeddingModelResources.available() == nil {
             messages.append(
                 String(localized: "Install Embedding Gemma for semantic similarity.")
@@ -221,16 +222,22 @@ final class BenchmarkViewModel {
               let resolvedTextModel = inventory.resolve(textModel) else {
             return nil
         }
-        return BenchmarkRunRequest(
-            algorithm: algorithm,
-            visionModel: resolvedVisionModel,
-            textModel: resolvedTextModel,
-            algorithmConfiguration: .repack(
+        let algorithmConfiguration: BenchmarkAlgorithmConfiguration = switch algorithm {
+        case .repack:
+            .repack(
                 REPACKBenchmarkConfiguration(
                     sampleCount: sampleCount,
                     scoringMetric: scoringMetric
                 )
-            ),
+            )
+        case .capmas:
+            .capmas
+        }
+        return BenchmarkRunRequest(
+            algorithm: algorithm,
+            visionModel: resolvedVisionModel,
+            textModel: resolvedTextModel,
+            algorithmConfiguration: algorithmConfiguration,
             prompt: BenchmarkPromptSettings(
                 type: promptType,
                 text: resolvedPrompt

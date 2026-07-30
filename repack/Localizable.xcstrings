@@ -213,6 +213,9 @@
     "Cancel Download?" : {
 
     },
+    "CapMAS could not decompose the caption after six attempts." : {
+
+    },
     "Caption Another Image" : {
 
     },
@@ -965,6 +968,9 @@
 
     },
     "The selected photo could not be read." : {
+
+    },
+    "The selected text engine does not support CapMAS." : {
 
     },
     "The text model is not ready." : {

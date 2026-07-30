@@ -57,8 +57,23 @@ nonisolated struct REPACKBenchmarkMetadata: Codable, Equatable, Sendable {
     let finalCaption: String
 }
 
+nonisolated struct CapMASPropositionMetadata: Codable, Equatable, Sendable {
+    let statement: String
+    let score: Double
+    let isTrue: Bool
+}
+
+nonisolated struct CapMASBenchmarkMetadata: Codable, Equatable, Sendable {
+    let originalCaption: String
+    let propositions: [CapMASPropositionMetadata]
+    let truePropositions: [String]
+    let falsePropositions: [String]
+    let correctedCaption: String
+}
+
 nonisolated enum BenchmarkAlgorithmMetadata: Equatable, Sendable {
     case repack(REPACKBenchmarkMetadata)
+    case capmas(CapMASBenchmarkMetadata)
 }
 
 nonisolated struct BenchmarkImageMetadata: Codable, Equatable, Sendable {
@@ -72,6 +87,11 @@ nonisolated struct BenchmarkImageMetadata: Codable, Equatable, Sendable {
         case scoredAtomics
         case retainedAtomics
         case finalCaption
+        case originalCaption
+        case propositions
+        case truePropositions
+        case falsePropositions
+        case correctedCaption
     }
 
     init(file: String, details: BenchmarkAlgorithmMetadata) {
@@ -104,6 +124,31 @@ nonisolated struct BenchmarkImageMetadata: Codable, Equatable, Sendable {
                     )
                 )
             )
+        case .capmas:
+            details = .capmas(
+                CapMASBenchmarkMetadata(
+                    originalCaption: try container.decode(
+                        String.self,
+                        forKey: .originalCaption
+                    ),
+                    propositions: try container.decode(
+                        [CapMASPropositionMetadata].self,
+                        forKey: .propositions
+                    ),
+                    truePropositions: try container.decode(
+                        [String].self,
+                        forKey: .truePropositions
+                    ),
+                    falsePropositions: try container.decode(
+                        [String].self,
+                        forKey: .falsePropositions
+                    ),
+                    correctedCaption: try container.decode(
+                        String.self,
+                        forKey: .correctedCaption
+                    )
+                )
+            )
         }
     }
 
@@ -117,6 +162,22 @@ nonisolated struct BenchmarkImageMetadata: Codable, Equatable, Sendable {
             try container.encode(metadata.scoredAtomics, forKey: .scoredAtomics)
             try container.encode(metadata.retainedAtomics, forKey: .retainedAtomics)
             try container.encode(metadata.finalCaption, forKey: .finalCaption)
+        case .capmas(let metadata):
+            try container.encode(BenchmarkAlgorithm.capmas, forKey: .algorithm)
+            try container.encode(metadata.originalCaption, forKey: .originalCaption)
+            try container.encode(metadata.propositions, forKey: .propositions)
+            try container.encode(
+                metadata.truePropositions,
+                forKey: .truePropositions
+            )
+            try container.encode(
+                metadata.falsePropositions,
+                forKey: .falsePropositions
+            )
+            try container.encode(
+                metadata.correctedCaption,
+                forKey: .correctedCaption
+            )
         }
     }
 }

@@ -48,7 +48,7 @@ final class REPACKBenchmarkExecutor: BenchmarkAlgorithmExecuting {
 
         let stageDurations = Dictionary(
             uniqueKeysWithValues: result.timings.map {
-                (Self.key(for: $0.stage), $0.duration.seconds)
+                (Self.key(for: $0.stage), $0.duration.benchmarkSeconds)
             }
         )
         let timing = BenchmarkImageTiming(
@@ -130,12 +130,6 @@ final class REPACKBenchmarkExecutor: BenchmarkAlgorithmExecuting {
             retainedAtomics: result.retainedAtomics,
             finalCaption: result.caption
         )
-    }
-}
-
-private extension Duration {
-    nonisolated var seconds: Double {
-        Double(components.seconds) + Double(components.attoseconds) / 1e18
     }
 }
 #endif

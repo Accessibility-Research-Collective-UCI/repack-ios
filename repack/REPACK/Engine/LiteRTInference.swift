@@ -11,7 +11,7 @@ protocol InferenceEngine: AnyObject {
 
 @MainActor
 final class LiteRTInferenceEngine: InferenceEngine {
-    private let engine: Engine
+    let engine: Engine
     private var activeConversation: Conversation?
 
     init(engine: Engine) {

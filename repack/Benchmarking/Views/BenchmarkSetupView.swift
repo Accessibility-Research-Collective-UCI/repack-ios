@@ -18,8 +18,7 @@ struct BenchmarkSetupView: View {
 
             engineSection
 
-            switch model.algorithm {
-            case .repack:
+            if model.algorithm == .repack {
                 REPACKBenchmarkSettingsView(model: model)
             }
 

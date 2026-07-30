@@ -55,11 +55,15 @@ nonisolated struct REPACKExportSettings: Codable, Equatable, Sendable {
 
 nonisolated enum BenchmarkAlgorithmSettings: Codable, Equatable, Sendable {
     case repack(REPACKExportSettings)
+    case capmas
 
     private enum CodingKeys: String, CodingKey {
         case algorithm
         case similarityMetric
         case similarityThreshold
+        case verificationThreshold
+        case classificationMethod
+        case note
     }
 
     init(from decoder: any Decoder) throws {
@@ -78,6 +82,8 @@ nonisolated enum BenchmarkAlgorithmSettings: Codable, Equatable, Sendable {
                     )
                 )
             )
+        case .capmas:
+            self = .capmas
         }
     }
 
@@ -93,6 +99,17 @@ nonisolated enum BenchmarkAlgorithmSettings: Codable, Equatable, Sendable {
             try container.encode(
                 settings.similarityThreshold,
                 forKey: .similarityThreshold
+            )
+        case .capmas:
+            try container.encode(BenchmarkAlgorithm.capmas, forKey: .algorithm)
+            try container.encode(0.5, forKey: .verificationThreshold)
+            try container.encode(
+                "randomBinary",
+                forKey: .classificationMethod
+            )
+            try container.encode(
+                "Random binary scores replace unavailable True/False token logits and are used only to preserve the latency workload. Do not use this output for quality evaluation.",
+                forKey: .note
             )
         }
     }
@@ -113,6 +130,15 @@ extension BenchmarkRunRequest {
                         similarityThreshold: settings.similarityThreshold
                     )
                 ),
+                prompt: prompt
+            )
+        case .capmas:
+            BenchmarkSettings(
+                visionEngine: .vision(model: visionModel.choice),
+                textEngine: .text(model: textModel.choice),
+                numSamples: 1,
+                cooldownSeconds: cooldownSeconds,
+                algorithmSettings: .capmas,
                 prompt: prompt
             )
         }

@@ -55,7 +55,20 @@ final class DefaultBenchmarkAlgorithmExecutorFactory: BenchmarkAlgorithmExecutor
                 engineFactory: engineFactory,
                 devicePolicy: devicePolicy
             )
+        case .capmas:
+            try await CapMASBenchmarkExecutor(
+                visionModelURL: request.visionModel.url,
+                textModelURL: request.textModel.url,
+                prompt: request.prompt.text,
+                engineFactory: engineFactory
+            )
         }
+    }
+}
+
+extension Duration {
+    nonisolated var benchmarkSeconds: Double {
+        Double(components.seconds) + Double(components.attoseconds) / 1e18
     }
 }
 #endif
