@@ -62,6 +62,14 @@ final class DefaultBenchmarkAlgorithmExecutorFactory: BenchmarkAlgorithmExecutor
                 prompt: request.prompt.text,
                 engineFactory: engineFactory
             )
+        case .taco(let sampleCount):
+            try await TACOBenchmarkExecutor(
+                visionModelURL: request.visionModel.url,
+                textModelURL: request.textModel.url,
+                prompt: request.prompt.text,
+                reformulationCount: sampleCount,
+                engineFactory: engineFactory
+            )
         }
     }
 }

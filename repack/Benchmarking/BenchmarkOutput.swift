@@ -71,9 +71,31 @@ nonisolated struct CapMASBenchmarkMetadata: Codable, Equatable, Sendable {
     let correctedCaption: String
 }
 
+nonisolated struct TACOVerificationMetadata: Codable, Equatable, Sendable {
+    let reformulation: String
+    let response: String
+}
+
+nonisolated struct TACOQueryMetadata: Codable, Equatable, Sendable {
+    let question: String
+    let verifications: [TACOVerificationMetadata]
+    let yesCount: Int
+    let noCount: Int
+    let confidence: Double
+    let majorityAnswer: String
+}
+
+nonisolated struct TACOBenchmarkMetadata: Codable, Equatable, Sendable {
+    let originalCaption: String
+    let atomicTuples: [String]
+    let queries: [TACOQueryMetadata]
+    let refinedCaption: String
+}
+
 nonisolated enum BenchmarkAlgorithmMetadata: Equatable, Sendable {
     case repack(REPACKBenchmarkMetadata)
     case capmas(CapMASBenchmarkMetadata)
+    case taco(TACOBenchmarkMetadata)
 }
 
 nonisolated struct BenchmarkImageMetadata: Codable, Equatable, Sendable {
@@ -92,6 +114,9 @@ nonisolated struct BenchmarkImageMetadata: Codable, Equatable, Sendable {
         case truePropositions
         case falsePropositions
         case correctedCaption
+        case atomicTuples
+        case queries
+        case refinedCaption
     }
 
     init(file: String, details: BenchmarkAlgorithmMetadata) {
@@ -149,6 +174,27 @@ nonisolated struct BenchmarkImageMetadata: Codable, Equatable, Sendable {
                     )
                 )
             )
+        case .taco:
+            details = .taco(
+                TACOBenchmarkMetadata(
+                    originalCaption: try container.decode(
+                        String.self,
+                        forKey: .originalCaption
+                    ),
+                    atomicTuples: try container.decode(
+                        [String].self,
+                        forKey: .atomicTuples
+                    ),
+                    queries: try container.decode(
+                        [TACOQueryMetadata].self,
+                        forKey: .queries
+                    ),
+                    refinedCaption: try container.decode(
+                        String.self,
+                        forKey: .refinedCaption
+                    )
+                )
+            )
         }
     }
 
@@ -178,6 +224,12 @@ nonisolated struct BenchmarkImageMetadata: Codable, Equatable, Sendable {
                 metadata.correctedCaption,
                 forKey: .correctedCaption
             )
+        case .taco(let metadata):
+            try container.encode(BenchmarkAlgorithm.taco, forKey: .algorithm)
+            try container.encode(metadata.originalCaption, forKey: .originalCaption)
+            try container.encode(metadata.atomicTuples, forKey: .atomicTuples)
+            try container.encode(metadata.queries, forKey: .queries)
+            try container.encode(metadata.refinedCaption, forKey: .refinedCaption)
         }
     }
 }

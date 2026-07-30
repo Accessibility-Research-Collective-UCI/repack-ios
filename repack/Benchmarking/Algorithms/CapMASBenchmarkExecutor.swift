@@ -1,33 +1,5 @@
 #if BENCHMARKING
-@preconcurrency import LiteRTLM
 import Foundation
-
-@MainActor
-protocol CapMASTextGenerating: AnyObject {
-    func generateText(systemPrompt: String, userPrompt: String) async throws -> String
-}
-
-extension LiteRTInferenceEngine: CapMASTextGenerating {
-    func generateText(
-        systemPrompt: String,
-        userPrompt: String
-    ) async throws -> String {
-        ExperimentalFlags.enableConversationConstrainedDecoding = false
-        let sampler = try SamplerConfig(topK: 1, topP: 1, temperature: 0)
-        let configuration = ConversationConfig(
-            systemMessage: Message(systemPrompt, role: .system),
-            samplerConfig: sampler
-        )
-        let conversation = try await engine.createConversation(with: configuration)
-        return try await withTaskCancellationHandler {
-            try await conversation.sendMessage(Message(userPrompt)).toString
-        } onCancel: {
-            Task { @MainActor in
-                try? conversation.cancel()
-            }
-        }
-    }
-}
 
 @MainActor
 final class CapMASBenchmarkExecutor: BenchmarkAlgorithmExecuting {
@@ -36,7 +8,7 @@ final class CapMASBenchmarkExecutor: BenchmarkAlgorithmExecuting {
 
     private let prompt: String
     private let visionEngine: any InferenceEngine
-    private let textEngine: any InferenceEngine & CapMASTextGenerating
+    private let textEngine: any InferenceEngine & BenchmarkTextGenerating
     private let clock = ContinuousClock()
 
     init(
@@ -51,7 +23,7 @@ final class CapMASBenchmarkExecutor: BenchmarkAlgorithmExecuting {
         visionEngine = try await engineFactory.makeVisionEngine(modelURL: visionModelURL)
         let engine = try await engineFactory.makeTextEngine(modelURL: textModelURL)
         guard let capmasTextEngine =
-            engine as? any InferenceEngine & CapMASTextGenerating else {
+            engine as? any InferenceEngine & BenchmarkTextGenerating else {
             throw CapMASError.unsupportedTextEngine
         }
         textEngine = capmasTextEngine

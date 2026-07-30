@@ -4,6 +4,7 @@ import Foundation
 nonisolated enum BenchmarkAlgorithm: String, Codable, CaseIterable, Identifiable, Sendable {
     case repack = "REPACK"
     case capmas = "CapMAS"
+    case taco = "TACO"
 
     var id: Self { self }
 
@@ -25,6 +26,15 @@ nonisolated enum BenchmarkAlgorithm: String, Codable, CaseIterable, Identifiable
                 BenchmarkStage(id: "verification", title: "Verification"),
                 BenchmarkStage(id: "correction", title: "Correction")
             ]
+        case .taco:
+            [
+                BenchmarkStage(id: "captioning", title: "Captioning"),
+                BenchmarkStage(id: "tupleExtraction", title: "Tuple Extraction"),
+                BenchmarkStage(id: "queryGeneration", title: "Query Generation"),
+                BenchmarkStage(id: "reformulation", title: "Reformulation"),
+                BenchmarkStage(id: "verification", title: "Verification"),
+                BenchmarkStage(id: "refinement", title: "Refinement")
+            ]
         }
     }
 }
@@ -37,6 +47,7 @@ nonisolated struct BenchmarkStage: Codable, Equatable, Hashable, Identifiable, S
 nonisolated enum BenchmarkAlgorithmConfiguration: Equatable, Sendable {
     case repack(REPACKBenchmarkConfiguration)
     case capmas
+    case taco(sampleCount: Int)
 }
 
 nonisolated struct REPACKBenchmarkConfiguration: Equatable, Sendable {

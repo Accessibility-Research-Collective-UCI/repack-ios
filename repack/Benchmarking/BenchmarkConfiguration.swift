@@ -56,6 +56,7 @@ nonisolated struct REPACKExportSettings: Codable, Equatable, Sendable {
 nonisolated enum BenchmarkAlgorithmSettings: Codable, Equatable, Sendable {
     case repack(REPACKExportSettings)
     case capmas
+    case taco
 
     private enum CodingKeys: String, CodingKey {
         case algorithm
@@ -84,6 +85,8 @@ nonisolated enum BenchmarkAlgorithmSettings: Codable, Equatable, Sendable {
             )
         case .capmas:
             self = .capmas
+        case .taco:
+            self = .taco
         }
     }
 
@@ -111,6 +114,8 @@ nonisolated enum BenchmarkAlgorithmSettings: Codable, Equatable, Sendable {
                 "Random binary scores replace unavailable True/False token logits and are used only to preserve the latency workload. Do not use this output for quality evaluation.",
                 forKey: .note
             )
+        case .taco:
+            try container.encode(BenchmarkAlgorithm.taco, forKey: .algorithm)
         }
     }
 }
@@ -139,6 +144,15 @@ extension BenchmarkRunRequest {
                 numSamples: 1,
                 cooldownSeconds: cooldownSeconds,
                 algorithmSettings: .capmas,
+                prompt: prompt
+            )
+        case .taco(let sampleCount):
+            BenchmarkSettings(
+                visionEngine: .vision(model: visionModel.choice),
+                textEngine: .text(model: textModel.choice),
+                numSamples: sampleCount,
+                cooldownSeconds: cooldownSeconds,
+                algorithmSettings: .taco,
                 prompt: prompt
             )
         }

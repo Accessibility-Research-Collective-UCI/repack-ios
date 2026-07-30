@@ -759,6 +759,9 @@
     "Repackaging the verified statements." : {
 
     },
+    "Reformulations: %lld" : {
+
+    },
     "Required by %@" : {
 
     },
@@ -910,6 +913,12 @@
     "Stops the download and removes temporary files." : {
 
     },
+    "TACO %@ produced no usable output after six attempts." : {
+
+    },
+    "TACO Settings" : {
+
+    },
     "Tap to brighten" : {
 
     },
@@ -971,6 +980,9 @@
 
     },
     "The selected text engine does not support CapMAS." : {
+
+    },
+    "The selected text engine does not support TACO." : {
 
     },
     "The text model is not ready." : {

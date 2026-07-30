@@ -232,6 +232,8 @@ final class BenchmarkViewModel {
             )
         case .capmas:
             .capmas
+        case .taco:
+            .taco(sampleCount: sampleCount)
         }
         return BenchmarkRunRequest(
             algorithm: algorithm,

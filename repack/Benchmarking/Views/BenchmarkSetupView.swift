@@ -20,6 +20,8 @@ struct BenchmarkSetupView: View {
 
             if model.algorithm == .repack {
                 REPACKBenchmarkSettingsView(model: model)
+            } else if model.algorithm == .taco {
+                TACOBenchmarkSettingsView(model: model)
             }
 
             promptSection

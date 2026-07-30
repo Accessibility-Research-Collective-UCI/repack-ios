@@ -287,6 +287,179 @@ struct BenchmarkingTests {
         #expect(output.formattedJSON().contains("\"verificationThreshold\" : 0.5"))
     }
 
+    @Test("TACO runs each stage, truncates reformulations, and counts responses")
+    func tacoExecution() async throws {
+        let vision = CapMASFakeInferenceEngine(
+            captionResponses: [
+                "A blue motorcycle.",
+                "yes",
+                "no",
+                "unclear"
+            ]
+        )
+        let text = CapMASFakeInferenceEngine(
+            textResponses: [
+                "",
+                "1 | entity - whole (motorcycle)\n2 | attribute - color (motorcycle, blue)",
+                "1 | Is there a motorcycle?\n2 | Is the motorcycle blue?",
+                "1. Is a motorcycle present?\n2. Can you see a motorcycle?\n3. Is there a motorbike?",
+                "1. Does the motorcycle look blue?",
+                "A motorcycle."
+            ]
+        )
+        let executor = try await TACOBenchmarkExecutor(
+            visionModelURL: URL(fileURLWithPath: "/tmp/vision.litertlm"),
+            textModelURL: URL(fileURLWithPath: "/tmp/text.litertlm"),
+            prompt: "Describe the product.",
+            reformulationCount: 2,
+            engineFactory: CapMASFakeEngineFactory(
+                visionEngine: vision,
+                textEngine: text
+            )
+        )
+        var progress: [BenchmarkAlgorithmProgress] = []
+
+        let result = try await executor.process(
+            image: URL(fileURLWithPath: "/tmp/example.jpg")
+        ) {
+            progress.append($0)
+        }
+
+        #expect(text.textPrompts.count == 6)
+        #expect(vision.captionPrompts.count == 4)
+        #expect(result.timing.stages.keys.sorted() == [
+            "captioning",
+            "queryGeneration",
+            "refinement",
+            "reformulation",
+            "tupleExtraction",
+            "verification"
+        ])
+        let verificationProgress = progress.compactMap {
+            $0.stage?.id == "verification" ? $0.fractionCompleted : nil
+        }
+        #expect(verificationProgress == verificationProgress.sorted())
+
+        guard case .taco(let metadata) = result.metadata.details else {
+            Issue.record("Expected TACO metadata")
+            return
+        }
+        #expect(metadata.originalCaption == "A blue motorcycle.")
+        #expect(metadata.atomicTuples.count == 2)
+        #expect(metadata.queries.count == 2)
+        #expect(metadata.queries[0].verifications.count == 2)
+        #expect(metadata.queries[0].yesCount == 1)
+        #expect(metadata.queries[0].noCount == 1)
+        #expect(metadata.queries[0].confidence == 0.5)
+        #expect(metadata.queries[0].majorityAnswer == "yes")
+        #expect(metadata.queries[1].yesCount == 0)
+        #expect(metadata.queries[1].confidence == 0)
+        #expect(metadata.refinedCaption == "A motorcycle.")
+        let encodedMetadata = try JSONEncoder().encode(result.metadata)
+        #expect(
+            try JSONDecoder().decode(
+                BenchmarkImageMetadata.self,
+                from: encodedMetadata
+            ) == result.metadata
+        )
+    }
+
+    @Test("TACO parsers handle structured and line output")
+    func tacoParsers() {
+        #expect(
+            TACOBenchmarkExecutor.parseTuples(
+                """
+                {atomic_tuples: [
+                  {tuple_type: "entity - whole", relevant_words: ["can"]},
+                  {tuple_type: "attribute - color", relevant_words: ["can", "red"]}
+                ]}
+                """
+            ) == [
+                "entity - whole (can)",
+                "attribute - color (can, red)"
+            ]
+        )
+        #expect(
+            TACOBenchmarkExecutor.parseQuestions(
+                """
+                {atomic_queries: ["Is there a can?", "Is the can red?"]}
+                """
+            ) == ["Is there a can?", "Is the can red?"]
+        )
+        #expect(
+            TACOBenchmarkExecutor.parseQuestions(
+                "1 | Is there a can?\n- Does the can look red?"
+            ) == ["Is there a can?", "Does the can look red?"]
+        )
+        #expect(
+            TACOBenchmarkExecutor.parseQuestions(
+                "['Is there a can?', 'Is the can red?']"
+            ) == ["Is there a can?", "Is the can red?"]
+        )
+        #expect(TACOBenchmarkExecutor.isYes(" Yes.\n"))
+        #expect(!TACOBenchmarkExecutor.isYes("maybe"))
+    }
+
+    @Test("TACO fails after six unusable tuple responses")
+    func tacoRetryLimit() async throws {
+        let vision = CapMASFakeInferenceEngine(captionResponses: ["Caption."])
+        let text = CapMASFakeInferenceEngine(
+            textResponses: Array(repeating: "", count: 6)
+        )
+        let executor = try await TACOBenchmarkExecutor(
+            visionModelURL: URL(fileURLWithPath: "/tmp/vision.litertlm"),
+            textModelURL: URL(fileURLWithPath: "/tmp/text.litertlm"),
+            prompt: "Describe.",
+            reformulationCount: 2,
+            engineFactory: CapMASFakeEngineFactory(
+                visionEngine: vision,
+                textEngine: text
+            )
+        )
+
+        var failed = false
+        do {
+            _ = try await executor.process(
+                image: URL(fileURLWithPath: "/tmp/example.jpg")
+            ) { _ in }
+        } catch {
+            failed = true
+        }
+        #expect(failed)
+        #expect(text.textPrompts.count == 6)
+    }
+
+    @Test("TACO exports its sample count and filename")
+    func tacoExport() {
+        let request = tacoRequest(sampleCount: 3)
+        #expect(request.exportedSettings.numSamples == 3)
+        #expect(request.exportedSettings.algorithmSettings == .taco)
+
+        let output = BenchmarkOutput(
+            runStartTime: .distantPast,
+            runEndTime: .distantPast,
+            iPhoneModel: "iPhone18,1",
+            iPhoneIdentifier: "test-device",
+            appVersion: "1",
+            buildVersion: "1",
+            osVersion: "26",
+            algorithm: .taco,
+            imageCount: 25,
+            completedImageCount: 0,
+            benchmarkSettings: request.exportedSettings,
+            results: BenchmarkResults(timing: []),
+            metadata: [],
+            status: .completed,
+            failure: nil
+        )
+
+        #expect(
+            output.exportFilename
+                == "benchmark-taco_test-device_gemma-4-e2b_gemma-4-e2b_describe_samples3.json"
+        )
+        #expect(output.formattedJSON().contains("\"algorithm\" : \"TACO\""))
+    }
+
     private func request(cooldownSeconds: Int = 15) -> BenchmarkRunRequest {
         let vision = ResolvedBenchmarkModel(
             choice: .gemma4E2B,
@@ -326,6 +499,24 @@ struct BenchmarkingTests {
             cooldownSeconds: 15
         )
     }
+
+    private func tacoRequest(sampleCount: Int) -> BenchmarkRunRequest {
+        let model = ResolvedBenchmarkModel(
+            choice: .gemma4E2B,
+            url: URL(fileURLWithPath: "/tmp/model.litertlm")
+        )
+        return BenchmarkRunRequest(
+            algorithm: .taco,
+            visionModel: model,
+            textModel: model,
+            algorithmConfiguration: .taco(sampleCount: sampleCount),
+            prompt: BenchmarkPromptSettings(
+                type: .describe,
+                text: Prompts.describePrompt
+            ),
+            cooldownSeconds: 15
+        )
+    }
 }
 
 @MainActor
@@ -355,7 +546,7 @@ private final class CapMASFakeEngineFactory: EngineFactory {
 @MainActor
 private final class CapMASFakeInferenceEngine:
     InferenceEngine,
-    CapMASTextGenerating {
+    BenchmarkTextGenerating {
     private var captionResponses: [String]
     private var textResponses: [String]
     private(set) var captionPrompts: [String] = []
