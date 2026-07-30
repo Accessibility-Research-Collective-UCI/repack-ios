@@ -63,14 +63,12 @@ struct BenchmarkingTests {
             "a.jpg": 2,
             "b.jpg": 3
         ])
-        let submitter = FakeBenchmarkSubmitter()
         let runner = BenchmarkRunner(
             executorFactory: FakeExecutorFactory(executor: executor),
             imageProvider: FakeImageProvider(files: ["b.jpg", "a.jpg"]),
             sleeper: AdvancingSleeper(dateProvider: dateProvider),
             dateProvider: dateProvider,
             deviceInformationProvider: FakeDeviceInformationProvider(),
-            submitter: submitter,
             idleTimerManager: FakeIdleTimerManager()
         )
 
@@ -81,7 +79,6 @@ struct BenchmarkingTests {
         #expect(output.results.averageTime == 2.5)
         #expect(output.runEndTime.timeIntervalSince(output.runStartTime) == 15)
         #expect(output.status == .completed)
-        #expect(submitter.outputs == [output])
     }
 
     @Test("Runner stops on the first failed image and keeps partial output")
@@ -98,7 +95,6 @@ struct BenchmarkingTests {
             sleeper: BenchmarkTaskSleeper(),
             dateProvider: FakeDateProvider(),
             deviceInformationProvider: FakeDeviceInformationProvider(),
-            submitter: FakeBenchmarkSubmitter(),
             idleTimerManager: FakeIdleTimerManager()
         )
 
@@ -355,13 +351,6 @@ struct BenchmarkingTests {
         #expect(metadata.queries[1].yesCount == 0)
         #expect(metadata.queries[1].confidence == 0)
         #expect(metadata.refinedCaption == "A motorcycle.")
-        let encodedMetadata = try JSONEncoder().encode(result.metadata)
-        #expect(
-            try JSONDecoder().decode(
-                BenchmarkImageMetadata.self,
-                from: encodedMetadata
-            ) == result.metadata
-        )
     }
 
     @Test("TACO parsers handle structured and line output")
@@ -618,8 +607,6 @@ private final class FakeBenchmarkExecutor: BenchmarkAlgorithmExecuting {
         case expected
     }
 
-    let algorithm = BenchmarkAlgorithm.repack
-    let stages = BenchmarkAlgorithm.repack.stages
     let durations: [String: Double]
     let failingFile: String?
     private(set) var processedFiles: [String] = []
@@ -640,7 +627,7 @@ private final class FakeBenchmarkExecutor: BenchmarkAlgorithmExecuting {
         }
         progress(
             BenchmarkAlgorithmProgress(
-                stage: stages.first,
+                stage: BenchmarkAlgorithm.repack.stages.first,
                 fractionCompleted: 1
             )
         )
@@ -704,15 +691,6 @@ private struct FakeDeviceInformationProvider:
             buildVersion: "1",
             osVersion: "26"
         )
-    }
-}
-
-@MainActor
-private final class FakeBenchmarkSubmitter: BenchmarkResultSubmitting {
-    private(set) var outputs: [BenchmarkOutput] = []
-
-    func submit(_ output: BenchmarkOutput) async throws {
-        outputs.append(output)
     }
 }
 

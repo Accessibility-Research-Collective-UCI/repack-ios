@@ -85,16 +85,20 @@ struct ContentView: View {
     @ViewBuilder
     private var rootContent: some View {
         #if BENCHMARKING
-        BenchmarkTabContainer {
-            repackNavigation
-        } benchmark: {
-            NavigationStack {
-                BenchmarkRootView(
-                    localModels: model.selectableLocalModels,
-                    showModelManager: {
-                        isModelManagerPresented = true
-                    }
-                )
+        TabView {
+            Tab("REPACK", systemImage: "shippingbox") {
+                repackNavigation
+            }
+
+            Tab("Benchmark", systemImage: "gauge.open.with.lines.needle.33percent") {
+                NavigationStack {
+                    BenchmarkRootView(
+                        localModels: model.selectableLocalModels,
+                        showModelManager: {
+                            isModelManagerPresented = true
+                        }
+                    )
+                }
             }
         }
         #else

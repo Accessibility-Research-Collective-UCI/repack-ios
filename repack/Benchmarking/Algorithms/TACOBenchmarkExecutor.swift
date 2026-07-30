@@ -3,9 +3,6 @@ import Foundation
 
 @MainActor
 final class TACOBenchmarkExecutor: BenchmarkAlgorithmExecuting {
-    let algorithm = BenchmarkAlgorithm.taco
-    let stages = BenchmarkAlgorithm.taco.stages
-
     private let prompt: String
     private let reformulationCount: Int
     private let visionEngine: any InferenceEngine

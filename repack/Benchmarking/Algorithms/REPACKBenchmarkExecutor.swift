@@ -3,9 +3,6 @@ import Foundation
 
 @MainActor
 final class REPACKBenchmarkExecutor: BenchmarkAlgorithmExecuting {
-    let algorithm = BenchmarkAlgorithm.repack
-    let stages = BenchmarkAlgorithm.repack.stages
-
     private let prompt: CaptionPrompt
     private let configuration: REPACKBenchmarkConfiguration
     private let pipeline: REPACKPipeline

@@ -13,9 +13,6 @@ nonisolated struct BenchmarkImageExecutionResult: Equatable, Sendable {
 
 @MainActor
 protocol BenchmarkAlgorithmExecuting: AnyObject {
-    var algorithm: BenchmarkAlgorithm { get }
-    var stages: [BenchmarkStage] { get }
-
     func process(
         image: URL,
         progress: @escaping @MainActor (BenchmarkAlgorithmProgress) -> Void

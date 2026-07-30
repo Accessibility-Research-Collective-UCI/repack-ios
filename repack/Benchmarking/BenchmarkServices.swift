@@ -108,13 +108,4 @@ struct SystemBenchmarkDeviceInformationProvider: BenchmarkDeviceInformationProvi
     }
 }
 
-@MainActor
-protocol BenchmarkResultSubmitting: AnyObject {
-    func submit(_ output: BenchmarkOutput) async throws
-}
-
-@MainActor
-final class NoopBenchmarkResultSubmitter: BenchmarkResultSubmitting {
-    func submit(_: BenchmarkOutput) async throws {}
-}
 #endif

@@ -3,9 +3,6 @@ import Foundation
 
 @MainActor
 final class CapMASBenchmarkExecutor: BenchmarkAlgorithmExecuting {
-    let algorithm = BenchmarkAlgorithm.capmas
-    let stages = BenchmarkAlgorithm.capmas.stages
-
     private let prompt: String
     private let visionEngine: any InferenceEngine
     private let textEngine: any InferenceEngine & BenchmarkTextGenerating

@@ -19,9 +19,34 @@ struct BenchmarkSetupView: View {
             engineSection
 
             if model.algorithm == .repack {
-                REPACKBenchmarkSettingsView(model: model)
+                Section {
+                    Stepper(
+                        "Samples: \(model.sampleCount)",
+                        value: $model.sampleCount,
+                        in: 1...10
+                    )
+
+                    Picker("Similarity metric", selection: $model.scoringMetric) {
+                        ForEach(ScoringMetric.allCases) {
+                            Text($0.title).tag($0)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                } header: {
+                    Text("REPACK Settings")
+                } footer: {
+                    Text(
+                        "Uses REPACK’s default threshold for the selected similarity metric."
+                    )
+                }
             } else if model.algorithm == .taco {
-                TACOBenchmarkSettingsView(model: model)
+                Section("TACO Settings") {
+                    Stepper(
+                        "Reformulations: \(model.sampleCount)",
+                        value: $model.sampleCount,
+                        in: 1...10
+                    )
+                }
             }
 
             promptSection

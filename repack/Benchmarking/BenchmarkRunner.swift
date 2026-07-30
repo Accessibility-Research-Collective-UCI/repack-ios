@@ -17,7 +17,6 @@ final class BenchmarkRunner {
     private let sleeper: any BenchmarkSleeping
     private let dateProvider: any BenchmarkDateProviding
     private let deviceInformationProvider: any BenchmarkDeviceInformationProviding
-    private let submitter: any BenchmarkResultSubmitting
     private let idleTimerManager: any IdleTimerManaging
     private let idleTimerOwner = UUID()
 
@@ -33,8 +32,6 @@ final class BenchmarkRunner {
         dateProvider: any BenchmarkDateProviding = SystemBenchmarkDateProvider(),
         deviceInformationProvider: any BenchmarkDeviceInformationProviding =
             SystemBenchmarkDeviceInformationProvider(),
-        submitter: any BenchmarkResultSubmitting =
-            NoopBenchmarkResultSubmitter(),
         idleTimerManager: any IdleTimerManaging =
             ApplicationIdleTimerManager.shared
     ) {
@@ -43,7 +40,6 @@ final class BenchmarkRunner {
         self.sleeper = sleeper
         self.dateProvider = dateProvider
         self.deviceInformationProvider = deviceInformationProvider
-        self.submitter = submitter
         self.idleTimerManager = idleTimerManager
     }
 
@@ -141,9 +137,6 @@ final class BenchmarkRunner {
             failure: failure
         )
 
-        if status == .completed {
-            try? await submitter.submit(output)
-        }
         return output
     }
 

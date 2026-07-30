@@ -26,7 +26,6 @@ struct BenchmarkRunningView: View {
             }
             .padding()
         }
-        .keepsBenchmarkScreenAwake()
         .alert("Stop Benchmark?", isPresented: $isConfirmingStop) {
             Button("Keep Running", role: .cancel) {}
             Button("Stop Benchmark", role: .destructive) {
@@ -137,7 +136,7 @@ struct BenchmarkRunningView: View {
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(stage.title)
-                .accessibilityValue(status.accessibilityValue)
+                .accessibilityValue(status.title)
             }
         }
     }
@@ -219,10 +218,6 @@ private enum StageStatus: Equatable {
         case .active: "circle.dotted"
         case .complete: "checkmark.circle.fill"
         }
-    }
-
-    var accessibilityValue: String {
-        title
     }
 
     var title: String {

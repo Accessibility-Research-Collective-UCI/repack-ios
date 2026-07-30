@@ -98,7 +98,7 @@ nonisolated enum BenchmarkAlgorithmMetadata: Equatable, Sendable {
     case taco(TACOBenchmarkMetadata)
 }
 
-nonisolated struct BenchmarkImageMetadata: Codable, Equatable, Sendable {
+nonisolated struct BenchmarkImageMetadata: Encodable, Equatable, Sendable {
     let file: String
     let details: BenchmarkAlgorithmMetadata
 
@@ -117,85 +117,6 @@ nonisolated struct BenchmarkImageMetadata: Codable, Equatable, Sendable {
         case atomicTuples
         case queries
         case refinedCaption
-    }
-
-    init(file: String, details: BenchmarkAlgorithmMetadata) {
-        self.file = file
-        self.details = details
-    }
-
-    init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        file = try container.decode(String.self, forKey: .file)
-        switch try container.decode(BenchmarkAlgorithm.self, forKey: .algorithm) {
-        case .repack:
-            details = .repack(
-                REPACKBenchmarkMetadata(
-                    captions: try container.decode(
-                        [BenchmarkCaptionMetadata].self,
-                        forKey: .captions
-                    ),
-                    scoredAtomics: try container.decode(
-                        [BenchmarkAtomicMetadata].self,
-                        forKey: .scoredAtomics
-                    ),
-                    retainedAtomics: try container.decode(
-                        [String].self,
-                        forKey: .retainedAtomics
-                    ),
-                    finalCaption: try container.decode(
-                        String.self,
-                        forKey: .finalCaption
-                    )
-                )
-            )
-        case .capmas:
-            details = .capmas(
-                CapMASBenchmarkMetadata(
-                    originalCaption: try container.decode(
-                        String.self,
-                        forKey: .originalCaption
-                    ),
-                    propositions: try container.decode(
-                        [CapMASPropositionMetadata].self,
-                        forKey: .propositions
-                    ),
-                    truePropositions: try container.decode(
-                        [String].self,
-                        forKey: .truePropositions
-                    ),
-                    falsePropositions: try container.decode(
-                        [String].self,
-                        forKey: .falsePropositions
-                    ),
-                    correctedCaption: try container.decode(
-                        String.self,
-                        forKey: .correctedCaption
-                    )
-                )
-            )
-        case .taco:
-            details = .taco(
-                TACOBenchmarkMetadata(
-                    originalCaption: try container.decode(
-                        String.self,
-                        forKey: .originalCaption
-                    ),
-                    atomicTuples: try container.decode(
-                        [String].self,
-                        forKey: .atomicTuples
-                    ),
-                    queries: try container.decode(
-                        [TACOQueryMetadata].self,
-                        forKey: .queries
-                    ),
-                    refinedCaption: try container.decode(
-                        String.self,
-                        forKey: .refinedCaption
-                    )
-                )
-            )
-        }
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -251,7 +172,7 @@ nonisolated struct BenchmarkResults: Codable, Equatable, Sendable {
     }
 }
 
-nonisolated struct BenchmarkOutput: Codable, Equatable, Sendable {
+nonisolated struct BenchmarkOutput: Encodable, Equatable, Sendable {
     let runStartTime: Date
     let runEndTime: Date
     let iPhoneModel: String

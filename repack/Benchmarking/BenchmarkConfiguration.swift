@@ -39,7 +39,7 @@ nonisolated struct BenchmarkRunRequest: Sendable {
     let cooldownSeconds: Int
 }
 
-nonisolated struct BenchmarkSettings: Codable, Equatable, Sendable {
+nonisolated struct BenchmarkSettings: Encodable, Equatable, Sendable {
     let visionEngine: BenchmarkEngineSettings
     let textEngine: BenchmarkEngineSettings
     let numSamples: Int
@@ -53,7 +53,7 @@ nonisolated struct REPACKExportSettings: Codable, Equatable, Sendable {
     let similarityThreshold: Double
 }
 
-nonisolated enum BenchmarkAlgorithmSettings: Codable, Equatable, Sendable {
+nonisolated enum BenchmarkAlgorithmSettings: Encodable, Equatable, Sendable {
     case repack(REPACKExportSettings)
     case capmas
     case taco
@@ -65,29 +65,6 @@ nonisolated enum BenchmarkAlgorithmSettings: Codable, Equatable, Sendable {
         case verificationThreshold
         case classificationMethod
         case note
-    }
-
-    init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        switch try container.decode(BenchmarkAlgorithm.self, forKey: .algorithm) {
-        case .repack:
-            self = .repack(
-                REPACKExportSettings(
-                    similarityMetric: try container.decode(
-                        ScoringMetric.self,
-                        forKey: .similarityMetric
-                    ),
-                    similarityThreshold: try container.decode(
-                        Double.self,
-                        forKey: .similarityThreshold
-                    )
-                )
-            )
-        case .capmas:
-            self = .capmas
-        case .taco:
-            self = .taco
-        }
     }
 
     func encode(to encoder: any Encoder) throws {
