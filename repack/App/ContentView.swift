@@ -9,7 +9,6 @@ struct ContentView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var model = AppModel()
-    @State private var powerController = CaptioningPowerController()
     @State private var path: [Route] = []
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var isCameraPresented = false
@@ -17,23 +16,12 @@ struct ContentView: View {
 
     var body: some View {
         rootContent
-            .overlay {
-                if powerController.isDimmed {
-                    CaptioningDimOverlay {
-                        powerController.brighten()
-                    }
-                }
-            }
+            .modifier(AppKeepAwakeModifier(manager: ApplicationIdleTimerManager.shared))
             .task {
-                updateCaptioningPower()
                 await model.prepareForLaunch()
                 await model.handleScenePhase(scenePhase)
             }
-            .onChange(of: model.phase) {
-                updateCaptioningPower()
-            }
             .onChange(of: scenePhase) { _, newPhase in
-                updateCaptioningPower(scenePhase: newPhase)
                 Task {
                     await model.handleScenePhase(newPhase)
                 }
@@ -76,9 +64,6 @@ struct ContentView: View {
                 }
             } message: {
                 Text(model.errorMessage ?? "")
-            }
-            .onDisappear {
-                powerController.stop()
             }
     }
 
@@ -143,12 +128,5 @@ struct ContentView: View {
                 }
             }
         }
-    }
-
-    private func updateCaptioningPower(scenePhase: ScenePhase? = nil) {
-        powerController.update(
-            isComputing: model.phase == .processing,
-            scenePhase: scenePhase ?? self.scenePhase
-        )
     }
 }

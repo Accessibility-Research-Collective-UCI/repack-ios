@@ -68,8 +68,7 @@ struct BenchmarkingTests {
             imageProvider: FakeImageProvider(files: ["b.jpg", "a.jpg"]),
             sleeper: AdvancingSleeper(dateProvider: dateProvider),
             dateProvider: dateProvider,
-            deviceInformationProvider: FakeDeviceInformationProvider(),
-            idleTimerManager: FakeIdleTimerManager()
+            deviceInformationProvider: FakeDeviceInformationProvider()
         )
 
         let output = await runner.run(request: request()) { _ in }
@@ -94,8 +93,7 @@ struct BenchmarkingTests {
             ),
             sleeper: BenchmarkTaskSleeper(),
             dateProvider: FakeDateProvider(),
-            deviceInformationProvider: FakeDeviceInformationProvider(),
-            idleTimerManager: FakeIdleTimerManager()
+            deviceInformationProvider: FakeDeviceInformationProvider()
         )
 
         let output = await runner.run(
@@ -692,11 +690,6 @@ private struct FakeDeviceInformationProvider:
             osVersion: "26"
         )
     }
-}
-
-@MainActor
-private final class FakeIdleTimerManager: IdleTimerManaging {
-    func setPreventingIdleSleep(_: Bool, owner _: UUID) {}
 }
 
 private extension Duration {

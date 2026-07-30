@@ -17,8 +17,6 @@ final class BenchmarkRunner {
     private let sleeper: any BenchmarkSleeping
     private let dateProvider: any BenchmarkDateProviding
     private let deviceInformationProvider: any BenchmarkDeviceInformationProviding
-    private let idleTimerManager: any IdleTimerManaging
-    private let idleTimerOwner = UUID()
 
     private var executor: (any BenchmarkAlgorithmExecuting)?
     private var interruption: BenchmarkFailure?
@@ -31,16 +29,13 @@ final class BenchmarkRunner {
         sleeper: any BenchmarkSleeping = BenchmarkTaskSleeper(),
         dateProvider: any BenchmarkDateProviding = SystemBenchmarkDateProvider(),
         deviceInformationProvider: any BenchmarkDeviceInformationProviding =
-            SystemBenchmarkDeviceInformationProvider(),
-        idleTimerManager: any IdleTimerManaging =
-            ApplicationIdleTimerManager.shared
+            SystemBenchmarkDeviceInformationProvider()
     ) {
         self.executorFactory = executorFactory
         self.imageProvider = imageProvider
         self.sleeper = sleeper
         self.dateProvider = dateProvider
         self.deviceInformationProvider = deviceInformationProvider
-        self.idleTimerManager = idleTimerManager
     }
 
     func run(
@@ -56,11 +51,7 @@ final class BenchmarkRunner {
         var currentFile: String?
 
         interruption = nil
-        idleTimerManager.setPreventingIdleSleep(true, owner: idleTimerOwner)
-        defer {
-            idleTimerManager.setPreventingIdleSleep(false, owner: idleTimerOwner)
-            executor = nil
-        }
+        defer { executor = nil }
 
         do {
             let images = try imageProvider.images().sorted {
