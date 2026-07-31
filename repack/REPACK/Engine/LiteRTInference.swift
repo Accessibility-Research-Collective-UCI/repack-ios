@@ -4,6 +4,7 @@ import Foundation
 @MainActor
 protocol InferenceEngine: AnyObject {
     func generateCaption(image: URL, prompt: String, seed: Int) async throws -> String
+    func generateText(systemPrompt: String, userPrompt: String) async throws -> String
     func atomize(caption: String) async throws -> AtomizationResult
     func repackage(atomics: [String]) async throws -> String
     func cancel() async
@@ -36,6 +37,20 @@ final class LiteRTInferenceEngine: InferenceEngine {
             ]
         )
         return try await send(message, through: conversation).toString
+    }
+
+    func generateText(
+        systemPrompt: String,
+        userPrompt: String
+    ) async throws -> String {
+        ExperimentalFlags.enableConversationConstrainedDecoding = false
+        let sampler = try SamplerConfig(topK: 1, topP: 1, temperature: 0)
+        let configuration = ConversationConfig(
+            systemMessage: Message(systemPrompt, role: .system),
+            samplerConfig: sampler
+        )
+        let conversation = try await engine.createConversation(with: configuration)
+        return try await send(Message(userPrompt), through: conversation).toString
     }
 
     func atomize(caption: String) async throws -> AtomizationResult {
@@ -96,22 +111,15 @@ final class LiteRTInferenceEngine: InferenceEngine {
     }
 
     func repackage(atomics: [String]) async throws -> String {
-        ExperimentalFlags.enableConversationConstrainedDecoding = false
-        let sampler = try SamplerConfig(topK: 1, topP: 1, temperature: 0)
-        let configuration = ConversationConfig(
-            systemMessage: Message(Prompts.repackagePrompt, role: .system),
-            samplerConfig: sampler
-        )
-        let conversation = try await engine.createConversation(with: configuration)
         let data = try JSONEncoder().encode(atomics)
         guard let encodedAtomics = String(data: data, encoding: .utf8) else {
             throw AtomizationError.unableToEncodeInput
         }
 
-        return try await send(
-            Message("Atomic statements:\n\(encodedAtomics)"),
-            through: conversation
-        ).toString
+        return try await generateText(
+            systemPrompt: Prompts.repackagePrompt,
+            userPrompt: "Atomic statements:\n\(encodedAtomics)"
+        )
     }
 
     func cancel() async {

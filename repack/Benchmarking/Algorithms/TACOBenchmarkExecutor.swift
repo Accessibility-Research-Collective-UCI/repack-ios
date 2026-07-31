@@ -6,7 +6,7 @@ final class TACOBenchmarkExecutor: BenchmarkAlgorithmExecuting {
     private let prompt: String
     private let reformulationCount: Int
     private let visionEngine: any InferenceEngine
-    private let textEngine: any InferenceEngine & BenchmarkTextGenerating
+    private let textEngine: any InferenceEngine
     private let clock = ContinuousClock()
 
     init(
@@ -21,12 +21,7 @@ final class TACOBenchmarkExecutor: BenchmarkAlgorithmExecuting {
         try engineFactory.validateModel(at: visionModelURL)
         try engineFactory.validateModel(at: textModelURL)
         visionEngine = try await engineFactory.makeVisionEngine(modelURL: visionModelURL)
-        let engine = try await engineFactory.makeTextEngine(modelURL: textModelURL)
-        guard let benchmarkTextEngine =
-            engine as? any InferenceEngine & BenchmarkTextGenerating else {
-            throw TACOError.unsupportedTextEngine
-        }
-        textEngine = benchmarkTextEngine
+        textEngine = try await engineFactory.makeTextEngine(modelURL: textModelURL)
     }
 
     func process(
@@ -485,14 +480,11 @@ final class TACOBenchmarkExecutor: BenchmarkAlgorithmExecuting {
 
 private enum TACOError: LocalizedError {
     case noValues(String)
-    case unsupportedTextEngine
 
     var errorDescription: String? {
         switch self {
         case .noValues(let stage):
             String(localized: "TACO \(stage) produced no usable output after six attempts.")
-        case .unsupportedTextEngine:
-            String(localized: "The selected text engine does not support TACO.")
         }
     }
 }

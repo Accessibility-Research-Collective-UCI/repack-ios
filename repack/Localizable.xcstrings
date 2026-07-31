@@ -143,6 +143,9 @@
     "Asks for confirmation before stopping the benchmark." : {
 
     },
+    "Atomic" : {
+
+    },
     "Atomic Statements and Scores" : {
 
     },
@@ -169,6 +172,9 @@
 
     },
     "Background Download Unavailable" : {
+
+    },
+    "Based on our calibration of this model…" : {
 
     },
     "Before Starting" : {
@@ -437,6 +443,9 @@
     "Export JSON" : {
 
     },
+    "Finally, we are highly uncertain about…" : {
+
+    },
     "Gemma 4 E2B" : {
 
     },
@@ -464,7 +473,19 @@
     "Generating captions" : {
 
     },
+    "Generating hedged caption" : {
+
+    },
+    "Generating stratified captions" : {
+
+    },
     "Generation Details" : {
+
+    },
+    "Hedged" : {
+
+    },
+    "Hedged Caption Unavailable" : {
 
     },
     "Image" : {
@@ -486,6 +507,9 @@
 
     },
     "Imported Model" : {
+
+    },
+    "Included" : {
 
     },
     "Increase threshold" : {
@@ -611,7 +635,16 @@
     "Next image starts in %lld seconds." : {
 
     },
+    "No additional uncertain details at this threshold." : {
+
+    },
     "No atomic statement" : {
+
+    },
+    "No atomic statements are included at this threshold." : {
+
+    },
+    "No atomic statements are removed at this threshold." : {
 
     },
     "No atomic statements available." : {
@@ -645,6 +678,9 @@
 
     },
     "Original Caption" : {
+
+    },
+    "Output rendering" : {
 
     },
     "Overall benchmark progress" : {
@@ -714,6 +750,9 @@
     "Remove Models?" : {
 
     },
+    "Removed" : {
+
+    },
     "Removes the current caption and image." : {
 
     },
@@ -772,6 +811,9 @@
 
     },
     "Retained" : {
+
+    },
+    "Retry" : {
 
     },
     "Runs on your device" : {
@@ -904,6 +946,12 @@
     "Stops the download and removes temporary files." : {
 
     },
+    "Stratified" : {
+
+    },
+    "Stratified Captions Unavailable" : {
+
+    },
     "TACO %@ produced no usable output after six attempts." : {
 
     },
@@ -967,12 +1015,6 @@
     "The selected photo could not be read." : {
 
     },
-    "The selected text engine does not support CapMAS." : {
-
-    },
-    "The selected text engine does not support TACO." : {
-
-    },
     "The text model is not ready." : {
 
     },
@@ -980,6 +1022,12 @@
 
     },
     "The vision model is not ready." : {
+
+    },
+    "There is no information here that we are relatively certain about." : {
+
+    },
+    "There is no information which we think is highly unlikely." : {
 
     },
     "There is not enough storage available. This download needs approximately %@, but %@ is available." : {
@@ -1059,6 +1107,12 @@
 
     },
     "Waiting to start…" : {
+
+    },
+    "We are relatively certain that…" : {
+
+    },
+    "We are somewhat sure that…" : {
 
     }
   },

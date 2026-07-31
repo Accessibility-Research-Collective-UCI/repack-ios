@@ -336,6 +336,34 @@ extension REPACKPipeline {
         return updatedResult
     }
 
+    func hedge(atomics: [String]) async throws -> String {
+        guard !atomics.isEmpty else { return "" }
+        try await prepareProcessingEngineIfNeeded()
+        guard let processingEngine else {
+            throw PipelineError.missingTextEngine
+        }
+
+        let data = try JSONEncoder().encode(atomics)
+        guard let encodedAtomics = String(data: data, encoding: .utf8) else {
+            throw AtomizationError.unableToEncodeInput
+        }
+        return try nonempty(
+            try await processingEngine.generateText(
+                systemPrompt: Prompts.hedgePrompt,
+                userPrompt: "Unverified visual statements:\n\(encodedAtomics)"
+            )
+        )
+    }
+
+    func repackage(atomics: [String]) async throws -> String {
+        guard !atomics.isEmpty else { return "" }
+        try await prepareProcessingEngineIfNeeded()
+        guard let processingEngine else {
+            throw PipelineError.missingTextEngine
+        }
+        return try nonempty(try await processingEngine.repackage(atomics: atomics))
+    }
+
     func cancel() async {
         await samplingEngine?.cancel()
         if let processingEngine,

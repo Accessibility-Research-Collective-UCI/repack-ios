@@ -164,6 +164,64 @@ import SwiftUI
     }
 }
 
+#Preview("Output · Atomic") {
+    NavigationStack {
+        RunView(
+            model: .previewOutput(rendering: .atomic),
+            restartAction: {},
+            cancelAction: {},
+            resetAction: {}
+        )
+    }
+}
+
+#Preview("Output · Hedged") {
+    NavigationStack {
+        RunView(
+            model: .previewOutput(rendering: .hedged),
+            restartAction: {},
+            cancelAction: {},
+            resetAction: {}
+        )
+    }
+}
+
+#Preview("Output · Hedged · Loading") {
+    NavigationStack {
+        RunView(
+            model: .previewOutput(rendering: .hedged, isGenerating: true),
+            restartAction: {},
+            cancelAction: {},
+            resetAction: {}
+        )
+    }
+}
+
+#Preview("Output · Hedged · Error") {
+    NavigationStack {
+        RunView(
+            model: .previewOutput(
+                rendering: .hedged,
+                errorMessage: String(localized: "Hedged Caption Unavailable")
+            ),
+            restartAction: {},
+            cancelAction: {},
+            resetAction: {}
+        )
+    }
+}
+
+#Preview("Output · Stratified") {
+    NavigationStack {
+        RunView(
+            model: .previewOutput(rendering: .stratified),
+            restartAction: {},
+            cancelAction: {},
+            resetAction: {}
+        )
+    }
+}
+
 #Preview("Output · Atomization Warning") {
     NavigationStack {
         RunView(

@@ -531,9 +531,7 @@ private final class CapMASFakeEngineFactory: EngineFactory {
 }
 
 @MainActor
-private final class CapMASFakeInferenceEngine:
-    InferenceEngine,
-    BenchmarkTextGenerating {
+private final class CapMASFakeInferenceEngine: InferenceEngine {
     private var captionResponses: [String]
     private var textResponses: [String]
     private(set) var captionPrompts: [String] = []

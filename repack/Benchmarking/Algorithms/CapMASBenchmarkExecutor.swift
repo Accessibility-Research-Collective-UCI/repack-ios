@@ -5,7 +5,7 @@ import Foundation
 final class CapMASBenchmarkExecutor: BenchmarkAlgorithmExecuting {
     private let prompt: String
     private let visionEngine: any InferenceEngine
-    private let textEngine: any InferenceEngine & BenchmarkTextGenerating
+    private let textEngine: any InferenceEngine
     private let clock = ContinuousClock()
 
     init(
@@ -18,12 +18,7 @@ final class CapMASBenchmarkExecutor: BenchmarkAlgorithmExecuting {
         try engineFactory.validateModel(at: visionModelURL)
         try engineFactory.validateModel(at: textModelURL)
         visionEngine = try await engineFactory.makeVisionEngine(modelURL: visionModelURL)
-        let engine = try await engineFactory.makeTextEngine(modelURL: textModelURL)
-        guard let capmasTextEngine =
-            engine as? any InferenceEngine & BenchmarkTextGenerating else {
-            throw CapMASError.unsupportedTextEngine
-        }
-        textEngine = capmasTextEngine
+        textEngine = try await engineFactory.makeTextEngine(modelURL: textModelURL)
     }
 
     func process(
@@ -207,14 +202,11 @@ final class CapMASBenchmarkExecutor: BenchmarkAlgorithmExecuting {
 
 private enum CapMASError: LocalizedError {
     case noPropositions
-    case unsupportedTextEngine
 
     var errorDescription: String? {
         switch self {
         case .noPropositions:
             String(localized: "CapMAS could not decompose the caption after six attempts.")
-        case .unsupportedTextEngine:
-            String(localized: "The selected text engine does not support CapMAS.")
         }
     }
 }

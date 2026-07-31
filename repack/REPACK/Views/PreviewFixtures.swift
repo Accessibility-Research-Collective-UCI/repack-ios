@@ -47,6 +47,27 @@ extension AppModel {
         )
     }
 
+    static func previewOutput(
+        rendering: OutputRenderingsController.Rendering,
+        isGenerating: Bool = false,
+        errorMessage: String? = nil
+    ) -> AppModel {
+        let model = previewOutput(
+            sampleAtomizationStatus: .parsed,
+            scoringMetric: .bleu
+        )
+        model.outputRenderings.configurePreview(
+            selection: rendering,
+            hedgedCaption: rendering == .hedged ? "A red can may be visible on a table." : nil,
+            stratifiedCaptions: rendering == .stratified
+                ? [StratificationTier.somewhatSure: "A red can may be visible."]
+                : [:],
+            isGenerating: isGenerating,
+            errorMessage: errorMessage
+        )
+        return model
+    }
+
     private static func previewOutput(
         sampleAtomizationStatus: AtomizationStatus,
         scoringMetric: ScoringMetric

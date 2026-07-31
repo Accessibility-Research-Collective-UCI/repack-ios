@@ -132,4 +132,18 @@ nonisolated enum Prompts {
     Output:
     A bottle of soda with a blue label that says 'Coca-Cola'.
     """
+
+    static let hedgePrompt = """
+    Rewrite the provided unverified visual statements as concise, cautious prose for a blind or low-vision reader.
+
+    Requirements:
+
+    1. Preserve every factual claim in the input. Do not omit, add, infer, correct, or elaborate on any detail.
+    2. Express each independent claim as uncertain using natural hedging, such as “may,” “might,” “appears to,” “seems to,” or “possibly.”
+    3. Ensure that a hedge clearly applies to every claim, including claims joined within the same sentence. Do not place an uncertain and an unqualified claim in the same sentence.
+    4. Combine closely related claims when doing so improves readability, but do not create new relationships, resolve ambiguities, or change which entities the claims refer to.
+    5. Avoid repetitive or awkward hedging while keeping the uncertainty of every claim explicit.
+    6. Do not mention verification, confidence, uncertainty scores, thresholds, atomic statements, algorithms, or models.
+    7. Output only the rewritten prose, with no introduction, explanation, labels, or formatting.
+    """
 }

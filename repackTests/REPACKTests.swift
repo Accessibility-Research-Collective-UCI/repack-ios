@@ -87,6 +87,53 @@ struct REPACKTests {
         #expect(viewModel.threshold == 0.5)
     }
 
+    @Test("Stratification calibrations cover every tier without overlap")
+    func stratificationCalibrations() {
+        let scores: [Double] = [0, 0.69, 0.7, 0.79, 0.8, 0.89, 0.9, 0.94, 0.95, 1]
+
+        for metric in ScoringMetric.allCases {
+            for model in DownloadableModel.imageCaptioningModels {
+                let calibration = metric.stratificationCalibration(for: model)
+                #expect(Set(calibration.ranges.keys) == Set(StratificationTier.allCases))
+                for score in scores {
+                    #expect(
+                        StratificationTier.allCases.count {
+                            calibration.range(for: $0).contains(score)
+                        } == 1
+                    )
+                }
+            }
+        }
+
+        let bleu = ScoringMetric.bleu.stratificationCalibration(for: .e2b)
+        #expect(bleu.range(for: .relativelyCertain).contains(0.95))
+        #expect(bleu.range(for: .somewhatSure).contains(0.7))
+        #expect(bleu.range(for: .highlyUncertain).contains(0.699_999))
+
+        let semantic = ScoringMetric.semanticSimilarity.stratificationCalibration(for: .e2b)
+        #expect(semantic.range(for: .relativelyCertain).contains(0.9))
+        #expect(semantic.range(for: .somewhatSure).contains(0.8))
+        #expect(semantic.range(for: .highlyUncertain).contains(0.799_999))
+    }
+
+    @Test("Hedging uses the shared text engine and preserves an empty input")
+    func hedgedCaption() async throws {
+        let fixture = Fixture()
+        let repack = try await REPACKPipeline(
+            modelURL: fixture.modelURL,
+            engineFactory: fixture.factory
+        )
+
+        let emptyCaption = try await repack.hedge(atomics: [])
+        #expect(emptyCaption.isEmpty)
+        let caption = try await repack.hedge(atomics: ["white logo"])
+
+        #expect(caption == "hedged caption")
+        #expect(fixture.factory.textState.generatedTextRequests.count == 1)
+        #expect(fixture.factory.textState.generatedTextRequests[0].systemPrompt == Prompts.hedgePrompt)
+        #expect(fixture.factory.textState.generatedTextRequests[0].userPrompt.contains("white logo"))
+    }
+
     @Test("Process generates N plus one captions and caches scoring for regeneration")
     func completePipelineAndRegeneration() async throws {
         let fixture = Fixture()
@@ -1063,6 +1110,8 @@ private final class FakeEngineState {
     var captionSeeds: [Int] = []
     var atomizedCaptions: [String] = []
     var repackagedAtomics: [[String]] = []
+    var generatedTextRequests: [(systemPrompt: String, userPrompt: String)] = []
+    var generatedTextResponse = "hedged caption"
     var cancellationCount = 0
     var captionDelay: Duration?
     var atomizationDelay: Duration?
@@ -1118,6 +1167,11 @@ private final class FakeInferenceEngine: InferenceEngine {
         state.captionSeeds.append(seed)
         let sampleNumber = state.captionSeeds.count
         return state.captionResponses[sampleNumber] ?? "caption \(sampleNumber)"
+    }
+
+    func generateText(systemPrompt: String, userPrompt: String) async throws -> String {
+        state.generatedTextRequests.append((systemPrompt, userPrompt))
+        return state.generatedTextResponse
     }
 
     func atomize(caption: String) async throws -> AtomizationResult {

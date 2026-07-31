@@ -70,6 +70,7 @@ final class AppModel {
     var progress: PipelineProgress?
     var result: CaptionResult?
     var isRegenerating = false
+    let outputRenderings = OutputRenderingsController()
     var errorMessage: String?
     var hasPendingCaptionRun = false
     let modelManager: ModelLibrary
@@ -120,6 +121,15 @@ final class AppModel {
             return String(localized: "Select which model to caption with")
         }
         return DownloadableModel.displayName(for: modelURL)
+    }
+
+    var selectedCaptioningModel: DownloadableModel {
+        guard let modelURL,
+              let model = DownloadableModel(modelURL: modelURL),
+              DownloadableModel.imageCaptioningModels.contains(model) else {
+            preconditionFailure("Results require a supported captioning model.")
+        }
+        return model
     }
 
     var verificationModelName: String {

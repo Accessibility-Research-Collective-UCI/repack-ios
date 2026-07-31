@@ -52,6 +52,7 @@ extension AppModel {
     }
 
     func discardPipelineAndRun() async {
+        outputRenderings.reset()
         thresholdRequestID = UUID()
         currentRunID = nil
         let activeProcessTask = processTask
@@ -101,6 +102,7 @@ extension AppModel {
     func invalidateCompletedResult() {
         guard hasCompletedResult else { return }
 
+        outputRenderings.reset()
         thresholdRequestID = UUID()
         thresholdTask?.cancel()
         thresholdTask = nil
@@ -120,6 +122,7 @@ extension AppModel {
     }
 
     func resetCaptionState() {
+        outputRenderings.reset()
         thresholdRequestID = UUID()
         thresholdTask?.cancel()
         thresholdTask = nil
@@ -183,6 +186,7 @@ extension AppModel {
                 processTask = nil
                 executionMode = nil
                 result = generatedResult
+                outputRenderings.reset()
                 threshold = generatedResult.threshold
                 finishTiming()
                 clearPendingCaptionRun()

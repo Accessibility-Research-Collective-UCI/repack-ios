@@ -386,6 +386,7 @@ extension AppModel {
 
         thresholdTask?.cancel()
         processTask?.cancel()
+        outputRenderings.reset()
         result = nil
         progress = .sampling(completed: 0, total: sampleCount + 1)
         completedElapsed = nil
@@ -465,6 +466,7 @@ extension AppModel {
         threshold = newValue
         guard result != nil, let pipeline else { return }
 
+        outputRenderings.invalidateHedged()
         thresholdTask?.cancel()
         thresholdRequestID = UUID()
         let requestID = thresholdRequestID
@@ -484,6 +486,11 @@ extension AppModel {
                 try Task.checkCancellation()
                 guard requestID == thresholdRequestID else { return }
                 result = regenerated
+                outputRenderings.refresh(
+                    result: regenerated,
+                    pipeline: pipeline,
+                    model: selectedCaptioningModel
+                )
                 announce(String(localized: "Caption updated."))
             } catch is CancellationError {
                 return
@@ -495,6 +502,7 @@ extension AppModel {
     }
 
     func cancelProcessing() async {
+        outputRenderings.reset()
         currentRunID = nil
         let activeProcessTask = processTask
         processTask = nil
@@ -519,5 +527,19 @@ extension AppModel {
     func resetRun() async {
         await cancelProcessing()
         await removeAttachedImage()
+    }
+
+    func selectOutputRendering(_ rendering: OutputRenderingsController.Rendering) {
+        guard let result, let pipeline else { return }
+        outputRenderings.select(
+            rendering,
+            result: result,
+            pipeline: pipeline,
+            model: selectedCaptioningModel
+        )
+    }
+
+    func retryOutputRendering() {
+        selectOutputRendering(outputRenderings.selection)
     }
 }
