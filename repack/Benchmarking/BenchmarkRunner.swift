@@ -57,8 +57,7 @@ final class BenchmarkRunner {
             let images = try imageProvider.images().sorted {
                 $0.lastPathComponent < $1.lastPathComponent
             }
-            let preparedExecutor = try await executorFactory.makeExecutor(for: request)
-            executor = preparedExecutor
+            executor = try await executorFactory.makeExecutor(for: request)
 
             for (offset, image) in images.enumerated() {
                 try Task.checkCancellation()
@@ -71,8 +70,10 @@ final class BenchmarkRunner {
                         at: dateProvider.now
                     )
                 )
-                let result = try await preparedExecutor.process(image: image) {
+                guard let result = try await executor?.process(image: image, progress: {
                     event(.algorithmProgress($0))
+                }) else {
+                    throw CancellationError()
                 }
                 timings.append(result.timing)
                 metadata.append(result.metadata)
@@ -84,11 +85,18 @@ final class BenchmarkRunner {
                     )
                 )
 
+                // Release the engines (and their worker threads) before replacement.
+                // A local executor reference here would keep the old models alive.
+                executor = nil
                 if offset < images.count - 1 {
-                    try await cooldown(
+                    async let cooling: Void = cooldown(
                         seconds: request.cooldownSeconds,
                         event: event
                     )
+                    try Task.checkCancellation()
+                    currentFile = images[offset + 1].lastPathComponent
+                    executor = try await executorFactory.makeExecutor(for: request)
+                    try await cooling
                 }
             }
         } catch is CancellationError {

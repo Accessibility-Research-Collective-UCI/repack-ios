@@ -710,7 +710,7 @@
     "Preparing vision model" : {
 
     },
-    "Processes 25 bundled images with a 15-second cooldown between images." : {
+    "Processes 25 bundled images with a 20-second cooldown between images." : {
 
     },
     "Processing" : {

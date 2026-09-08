@@ -59,7 +59,7 @@ struct BenchmarkSetupView: View {
                 .frame(maxWidth: .infinity)
                 .disabled(!model.canStart)
                 .accessibilityHint(
-                    "Processes 25 bundled images with a 15-second cooldown between images."
+                    "Processes 25 bundled images with a 20-second cooldown between images."
                 )
             }
         }

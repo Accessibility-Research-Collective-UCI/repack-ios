@@ -6,7 +6,7 @@ import SwiftUI
 @MainActor
 @Observable
 final class BenchmarkViewModel {
-    private static let cooldownSeconds = 15
+    private static let cooldownSeconds = 20
 
     enum Phase: Equatable {
         case setup
