@@ -15,18 +15,14 @@ nonisolated struct DevicePolicy: Equatable, Sendable {
 
     var e4BMode: E4BMode {
         switch modelIdentifier {
-        // iPhone 15, 15 Plus (6 GB Physical RAM); 15 Pro, 15 Pro Max (8 GB Physical RAM)
-        // while these phones may have the memory to run E4B, they are likely too slow practically
-        case "iPhone15,4", "iPhone15,5", "iPhone16,1", "iPhone16,2":
+        // iPhone 15 and 15 Plus (6 GB Physical RAM)
+        case "iPhone15,4", "iPhone15,5":
             .unavailable
-        // iPhone 16 Pro, 16 Pro Max, 16, 16 Plus, 16e, 17, 17e (all 8 GB Physical RAM)
-        // switch to smaller model after caption sampling
-        case "iPhone17,1", "iPhone17,2", "iPhone17,3", "iPhone17,4", "iPhone17,5",
-             "iPhone18,3", "iPhone18,5":
-            .adaptive
-        // iPhone 17 Pro, 17 Pro Max, Air (all 12 GB Physical RAM)
-        // should have enough RAM to load both models
-        case "iPhone18,1", "iPhone18,2", "iPhone18,4":
+        // iPhone 15 Pro/Pro Max, all iPhone 16 models, and iPhone 17/17e (8 GB);
+        // iPhone 17 Pro/Pro Max and Air (12 GB). Keep both engines resident.
+        case "iPhone16,1", "iPhone16,2",
+             "iPhone17,1", "iPhone17,2", "iPhone17,3", "iPhone17,4", "iPhone17,5",
+             "iPhone18,1", "iPhone18,2", "iPhone18,3", "iPhone18,4", "iPhone18,5":
             .resident
         default:
             .adaptive
