@@ -80,6 +80,58 @@ struct BenchmarkingTests {
         #expect(output.status == .completed)
     }
 
+    @Test("All benchmarks release each executor before reloading", arguments: BenchmarkAlgorithm.allCases)
+    func releasesEnginesBetweenImages(algorithm: BenchmarkAlgorithm) async {
+        let factory = RecreatingExecutorFactory()
+        let dateProvider = FakeDateProvider()
+        let runner = BenchmarkRunner(
+            executorFactory: factory,
+            imageProvider: FakeImageProvider(files: ["a.jpg", "b.jpg", "c.jpg"]),
+            sleeper: AdvancingSleeper(dateProvider: dateProvider),
+            dateProvider: dateProvider,
+            deviceInformationProvider: FakeDeviceInformationProvider()
+        )
+        let runRequest = switch algorithm {
+        case .repack: request()
+        case .capmas: capmasRequest()
+        case .taco: tacoRequest(sampleCount: 3)
+        }
+        let output = await runner.run(request: runRequest) { _ in }
+
+        #expect(factory.creationCount == 3)
+        #expect(factory.previousWasReleased == [true, true, true])
+        #expect(factory.previous == nil)
+        #expect(output.status == .completed)
+        #expect(output.completedImageCount == 3)
+        #expect(output.results.totalTime == 3)
+        #expect(output.runEndTime.timeIntervalSince(output.runStartTime) == 30)
+    }
+
+    @Test("All benchmarks preserve completed images on reload failure", arguments: BenchmarkAlgorithm.allCases)
+    func reloadFailure(algorithm: BenchmarkAlgorithm) async {
+        let factory = RecreatingExecutorFactory(failingCreation: 2)
+        let dateProvider = FakeDateProvider()
+        let runner = BenchmarkRunner(
+            executorFactory: factory,
+            imageProvider: FakeImageProvider(files: ["a.jpg", "b.jpg"]),
+            sleeper: AdvancingSleeper(dateProvider: dateProvider),
+            dateProvider: dateProvider,
+            deviceInformationProvider: FakeDeviceInformationProvider()
+        )
+        let runRequest = switch algorithm {
+        case .repack: request()
+        case .capmas: capmasRequest()
+        case .taco: tacoRequest(sampleCount: 3)
+        }
+        let output = await runner.run(request: runRequest) { _ in }
+
+        #expect(factory.previousWasReleased == [true, true])
+        #expect(factory.previous == nil)
+        #expect(output.status == .failed)
+        #expect(output.completedImageCount == 1)
+        #expect(output.failure?.file == "b.jpg")
+    }
+
     @Test("Runner stops on the first failed image and keeps partial output")
     func stopOnFirstFailure() async {
         let executor = FakeBenchmarkExecutor(
@@ -581,6 +633,30 @@ private final class CapMASFakeInferenceEngine: InferenceEngine {
 
 private enum CapMASFakeError: Error {
     case unexpectedCall
+}
+
+@MainActor
+private final class RecreatingExecutorFactory: BenchmarkAlgorithmExecutorBuilding {
+    weak var previous: FakeBenchmarkExecutor?
+    var creationCount = 0
+    var previousWasReleased: [Bool] = []
+    let failingCreation: Int?
+
+    init(failingCreation: Int? = nil) {
+        self.failingCreation = failingCreation
+    }
+
+    func makeExecutor(for _: BenchmarkRunRequest) async throws
+        -> any BenchmarkAlgorithmExecuting {
+        previousWasReleased.append(previous == nil)
+        creationCount += 1
+        if creationCount == failingCreation {
+            throw FakeBenchmarkExecutor.Failure.expected
+        }
+        let executor = FakeBenchmarkExecutor(durations: [:])
+        previous = executor
+        return executor
+    }
 }
 
 @MainActor

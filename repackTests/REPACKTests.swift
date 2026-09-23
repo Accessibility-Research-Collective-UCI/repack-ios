@@ -337,20 +337,20 @@ struct REPACKTests {
 
     @Test("Device generations select the intended E4B policy")
     func devicePolicies() {
-        for identifier in ["iPhone15,4", "iPhone15,5", "iPhone16,1", "iPhone16,2"] {
+        for identifier in ["iPhone15,4", "iPhone15,5"] {
             #expect(DevicePolicy(modelIdentifier: identifier).e4BMode == .unavailable)
         }
 
         for identifier in [
+            "iPhone16,1", "iPhone16,2",
             "iPhone17,1", "iPhone17,2", "iPhone17,3", "iPhone17,4", "iPhone17,5",
-            "iPhone18,3", "iPhone18,5"
+            "iPhone18,1", "iPhone18,2", "iPhone18,3", "iPhone18,4", "iPhone18,5"
         ] {
-            #expect(DevicePolicy(modelIdentifier: identifier).e4BMode == .adaptive)
+            let policy = DevicePolicy(modelIdentifier: identifier)
+            #expect(policy.e4BMode == .resident)
+            #expect(policy.allowsE4B)
         }
-
-        for identifier in ["iPhone18,1", "iPhone18,2", "iPhone18,4"] {
-            #expect(DevicePolicy(modelIdentifier: identifier).e4BMode == .resident)
-        }
+        #expect(DevicePolicy(modelIdentifier: "unknown").e4BMode == .adaptive)
     }
 
     @Test("iPhone 15 rejects E4B")
@@ -362,7 +362,7 @@ struct REPACKTests {
                 samplingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E4B-it.litertlm"),
                 processingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E2B-it.litertlm"),
                 engineFactory: fixture.factory,
-                devicePolicy: DevicePolicy(modelIdentifier: "iPhone16,1")
+                devicePolicy: DevicePolicy(modelIdentifier: "iPhone15,4")
             )
         }
         #expect(fixture.factory.events.isEmpty)
@@ -384,6 +384,23 @@ struct REPACKTests {
         #expect(!viewModel.supportsDownload(.e4b))
     }
 
+    @Test("8 GB devices keep both engines resident regardless of adaptive threshold")
+    func eightGBResidentEngines() async throws {
+        let fixture = Fixture()
+        let repack = try await REPACKPipeline(
+            samplingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E4B-it.litertlm"),
+            processingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E2B-it.litertlm"),
+            engineFactory: fixture.factory,
+            devicePolicy: DevicePolicy(modelIdentifier: "iPhone16,1"),
+            memoryProvider: FixedMemoryProvider(bytes: 0)
+        )
+
+        #expect(fixture.factory.events == [.validate, .makeVision, .validate, .makeText])
+        #expect(fixture.factory.visionEngine != nil)
+        #expect(fixture.factory.textEngine != nil)
+        _ = repack
+    }
+
     @Test("Adaptive devices keep both engines resident with sufficient memory")
     func adaptiveResidentEngines() async throws {
         let fixture = Fixture()
@@ -391,7 +408,7 @@ struct REPACKTests {
             samplingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E4B-it.litertlm"),
             processingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E2B-it.litertlm"),
             engineFactory: fixture.factory,
-            devicePolicy: DevicePolicy(modelIdentifier: "iPhone17,3"),
+            devicePolicy: DevicePolicy(modelIdentifier: "unknown"),
             memoryProvider: FixedMemoryProvider(
                 bytes: DevicePolicy.minimumAvailableForResidentEngines
             )
@@ -410,7 +427,7 @@ struct REPACKTests {
             samplingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E4B-it.litertlm"),
             processingModelURL: URL(fileURLWithPath: "/tmp/gemma-4-E2B-it.litertlm"),
             engineFactory: fixture.factory,
-            devicePolicy: DevicePolicy(modelIdentifier: "iPhone18,3"),
+            devicePolicy: DevicePolicy(modelIdentifier: "unknown"),
             memoryProvider: FixedMemoryProvider(
                 bytes: DevicePolicy.minimumAvailableForResidentEngines - 1
             )
