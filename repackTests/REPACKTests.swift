@@ -1053,7 +1053,7 @@ struct REPACKTests {
 
 @MainActor
 private struct Fixture {
-    let modelURL = URL(fileURLWithPath: "/tmp/fake-model.litertlm")
+    let modelURL = URL.temporaryDirectory.appending(path: DownloadableModel.e2b.fileName)
     let imageURL = URL(fileURLWithPath: "/tmp/fake-image.jpg")
     let factory = FakeEngineFactory()
 

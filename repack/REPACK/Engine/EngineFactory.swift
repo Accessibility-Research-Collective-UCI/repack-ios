@@ -15,7 +15,7 @@ final class LiteRTEngineFactory: EngineFactory {
     private init() {}
 
     func validateModel(at modelURL: URL) throws {
-        guard Capabilities(modelPath: modelURL.path) != nil else {
+        guard ModelInfo(modelPath: modelURL.path) != nil else {
             throw PipelineError.invalidModel
         }
     }
@@ -23,7 +23,6 @@ final class LiteRTEngineFactory: EngineFactory {
     func makeVisionEngine(modelURL: URL) async throws -> any InferenceEngine {
         ExperimentalFlags.optIntoExperimentalAPIs()
         ExperimentalFlags.enableSpeculativeDecoding = false
-        ExperimentalFlags.visualTokenBudget = 1_120
         return try await makeEngine(modelURL: modelURL, includesVision: true)
     }
 

@@ -7,9 +7,5 @@
 		<string>com.uci.repack-tester.captioning</string>
 		<string>com.uci.repack-tester.model-download.*</string>
 	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>This app requires camera access to take photos for captioning.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This app requires photo library access to select photos for captioning.</string>
 </dict>
 </plist>
