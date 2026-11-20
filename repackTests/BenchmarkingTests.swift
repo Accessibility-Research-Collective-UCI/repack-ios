@@ -12,13 +12,13 @@ struct BenchmarkingTests {
         var configuration = REPACKBenchmarkConfiguration.default
         #expect(
             configuration.similarityThreshold
-                == ScoringMetric.bleu.threshold.defaultValue
+                == ScoringMetric.semanticSimilarity.threshold.defaultValue
         )
 
-        configuration.scoringMetric = .semanticSimilarity
+        configuration.scoringMetric = .bleu
         #expect(
             configuration.similarityThreshold
-                == ScoringMetric.semanticSimilarity.threshold.defaultValue
+                == ScoringMetric.bleu.threshold.defaultValue
         )
     }
 
@@ -75,6 +75,10 @@ struct BenchmarkingTests {
             devicePolicy: DevicePolicy(modelIdentifier: "iPhone18,1")
         )
 
+        #expect(model.scoringMetric == .semanticSimilarity)
+        #expect(model.promptType == .product)
+        model.scoringMetric = .bleu
+
         model.visionModel = .gemma4E4B
         model.textModel = .gemma4E2B
         #expect(model.modelStatus(.gemma4E4B) == "Not installed")
@@ -101,6 +105,32 @@ struct BenchmarkingTests {
                 $0.localizedStandardContains("Embedding Gemma")
             }
         )
+    }
+
+    @Test("Semantic preflight rejects unsupported calibration without restricting other algorithms",
+          arguments: BenchmarkCaptionModel.allCases, BenchmarkCaptionModel.allCases)
+    func semanticCalibrationPreflight(vision: BenchmarkCaptionModel, text: BenchmarkCaptionModel) {
+        let model = BenchmarkViewModel(
+            localModels: BenchmarkCaptionModel.allCases.map {
+                LocalModel(url: URL(filePath: "/tmp/" + $0.downloadableModel.fileName), isBundled: false)
+            },
+            devicePolicy: DevicePolicy(modelIdentifier: "iPhone18,1")
+        )
+        model.visionModel = vision
+        model.textModel = text
+        let calibrationError = SemanticScoringError.unsupportedCalibration.localizedDescription
+        #expect(model.preflightMessages.contains(calibrationError) == (text == .gemma4E4B))
+        if text == .gemma4E4B {
+            #expect(!model.canStart)
+        }
+
+        model.scoringMetric = .bleu
+        #expect(model.canStart)
+        for algorithm in [BenchmarkAlgorithm.capmas, .taco] {
+            model.algorithm = algorithm
+            model.scoringMetric = .semanticSimilarity
+            #expect(model.canStart)
+        }
     }
 
     @Test("Runner sorts images and excludes cooldown from timing aggregates")
@@ -602,7 +632,7 @@ struct BenchmarkingTests {
             algorithm: .repack,
             visionModel: vision,
             textModel: text,
-            algorithmConfiguration: .repack(.default),
+            algorithmConfiguration: .repack(REPACKBenchmarkConfiguration(sampleCount: 5, scoringMetric: .bleu)),
             prompt: BenchmarkPromptSettings(
                 type: .describe,
                 text: Prompts.describePrompt
