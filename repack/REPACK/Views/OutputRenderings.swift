@@ -23,12 +23,14 @@ struct OutputRenderings: View {
 
             if controller.selection != .repack {
                 Text(controller.selection.title)
-                    .font(.headline)
+                    .font(.title)
+                    .bold()
             }
 
             if controller.selection == .repack {
                 Text(.captionWithCertainty(controller.displayedCertainty))
-                    .font(.headline)
+                    .font(.title)
+                    .bold()
                 Text(result.caption)
                     .font(.title2)
                     .textSelection(.enabled)
@@ -47,7 +49,10 @@ struct OutputRenderings: View {
                     ProgressView("Updating caption…")
                 }
             } else if let text = controller.captions[controller.selection] {
-                Text(text.isEmpty ? String(localized: .noStatementsAvailable) : text)
+                Text(Self.emphasizedText(
+                    text.isEmpty ? String(localized: .noStatementsAvailable) : text,
+                    rendering: controller.selection
+                ))
                     .font(.title2)
                     .textSelection(.enabled)
             } else if controller.errors[controller.selection] == nil {
@@ -68,5 +73,49 @@ struct OutputRenderings: View {
                 model.announce(String(localized: "Caption updated."))
             }
         }
+    }
+
+    static func emphasizedText(
+        _ text: String,
+        rendering: OutputRenderingsController.Rendering
+    ) -> AttributedString {
+        let displayPrefixes = [
+            String(localized: .highConfidencePrefix),
+            String(localized: .mediumConfidencePrefix),
+            String(localized: .lowConfidencePrefix)
+        ]
+        let text = rendering == .stratified ? text.components(separatedBy: "\n").map { line in
+            for (prefix, displayPrefix) in zip(OutputRenderingsController.prefixes, displayPrefixes) {
+                if line.hasPrefix(prefix) {
+                    return displayPrefix + line.dropFirst(prefix.count)
+                }
+            }
+            return line
+        }.joined(separator: "\n") : text
+        var attributed = AttributedString(text)
+        let pattern: String
+        switch rendering {
+        case .repack:
+            return attributed
+        case .atomic:
+            pattern = #"(?m)^[0-9]+%:"#
+        case .stratified:
+            let prefixes = displayPrefixes.map {
+                NSRegularExpression.escapedPattern(for: $0)
+            }.joined(separator: "|")
+            pattern = "(?m)^(?:\(prefixes))"
+        case .hedged:
+            pattern = #"\[(?:appears to|appear to|seems to|seem to|possibly|might|may)\]"#
+        }
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return attributed
+        }
+        for match in expression.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let range = Range(match.range, in: text),
+                  let start = AttributedString.Index(range.lowerBound, within: attributed),
+                  let end = AttributedString.Index(range.upperBound, within: attributed) else { continue }
+            attributed[start..<end].inlinePresentationIntent = .stronglyEmphasized
+        }
+        return attributed
     }
 }

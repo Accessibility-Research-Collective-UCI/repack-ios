@@ -1,6 +1,54 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "highConfidencePrefix" : {
+      "comment": "Visible certainty label for an uncertainty representation.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "We think it is highly likely (90% certain or more) that"
+          }
+        }
+      }
+    },
+    "mediumConfidencePrefix" : {
+      "comment": "Visible certainty label for an uncertainty representation.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "We think it is somewhat likely (80% to 90% certain) that"
+          }
+        }
+      }
+    },
+    "lowConfidencePrefix" : {
+      "comment": "Visible certainty label for an uncertainty representation.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "We are unsure (less than 80% certain) whether"
+          }
+        }
+      }
+    },
+    "hedgingLanguageThreshold" : {
+      "comment": "Visible certainty label for an uncertainty representation.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hedging Language when less than %lld%% certain"
+          }
+        }
+      }
+    },
     "percentageStatementsTab" : {
       "comment": "Short output tab label. The full representation name appears below the tabs.",
       "extractionState": "manual",

@@ -20,7 +20,7 @@ final class OutputRenderingsController {
             case .repack: String(localized: "Caption")
             case .atomic: String(localized: .percentageStatements)
             case .stratified: String(localized: .confidenceGroups)
-            case .hedged: String(localized: .hedgingLanguage)
+            case .hedged: String(localized: .hedgingLanguageThreshold(90))
             }
         }
     }
