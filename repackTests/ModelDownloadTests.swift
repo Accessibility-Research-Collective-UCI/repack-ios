@@ -508,6 +508,45 @@ struct ModelDownloadTests {
         )
     }
 
+    @Test("Obsolete embedding records do not delete the replacement or its dependencies")
+    @MainActor
+    func embeddingUpgradeDeletion() throws {
+        let fixture = try ModelDownloadFixture()
+        defer { fixture.cleanUp() }
+        let suite = "EmbeddingUpgrade-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let oldName = "embeddinggemma-300M_seq256_mixed-precision.tflite"
+        let old = InstallationRecord(fileName: oldName, origin: .approved,
+            model: .embeddingGemma, explicitlyOwned: true, requiredBy: [], byteCount: 1)
+        defaults.set(try PropertyListEncoder().encode([old]), forKey: "ModelInstallationRecords")
+        for model in DownloadableModel.embeddingGemma.dependencyOrder {
+            try fixture.installModel(model)
+        }
+        let oldURL = fixture.modelsDirectory.appending(path: oldName)
+        try Data([1]).write(to: oldURL)
+        let files = try FileManager.default.contentsOfDirectory(at: fixture.modelsDirectory,
+                                                               includingPropertiesForKeys: nil)
+        let store = ModelInstallationStore(defaults: defaults)
+        _ = store.reconcile([], installedFiles: files)
+        let firstRecords = store.records()
+        _ = store.reconcile([], installedFiles: files)
+        #expect(store.records() == firstRecords)
+        let items = store.records().map {
+            StorageItem(model: LocalModel(url: fixture.modelsDirectory.appending(path: $0.fileName),
+                                          isBundled: false), record: $0)
+        }
+        let obsolete = try #require(items.first { $0.record.fileName == oldName })
+        #expect(obsolete.record.model == nil)
+        #expect(obsolete.record.explicitlyOwned)
+        let resolver = ModelDependencyResolver(items: items)
+        #expect(resolver.deletionPlan(for: [obsolete.id]).ids == [obsolete.id])
+        let current = try #require(items.first { $0.record.model == .embeddingGemma })
+        let currentPlan = resolver.deletionPlan(for: [current.id])
+        #expect(currentPlan.items.count == 4)
+        #expect(!currentPlan.ids.contains(obsolete.id))
+    }
+
     @Test("Embedding model storage groups tokenizer and both calibrations")
     @MainActor
     func embeddingStorageGrouping() async throws {
