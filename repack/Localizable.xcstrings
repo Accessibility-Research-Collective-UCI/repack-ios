@@ -1,6 +1,17 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "calibrationInvalid" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The certainty calibration is invalid. Repair the caption resources and try again."
+          }
+        }
+      }
+    },
     "" : {
 
     },

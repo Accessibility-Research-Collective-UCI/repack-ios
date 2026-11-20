@@ -12,6 +12,7 @@ nonisolated enum DownloadableModel:
     case embeddingGemmaTokenizer
     case embeddingGemmaIDFE2B
     case embeddingGemmaIDFE4B
+    case conformalCalibration
 
     static let imageCaptioningModels: [DownloadableModel] = [.e2b, .e4b]
     static let embeddingModels: [DownloadableModel] = [.embeddingGemma]
@@ -19,7 +20,7 @@ nonisolated enum DownloadableModel:
     var id: Self { self }
 
     var isEmbeddingDependency: Bool {
-        [.embeddingGemmaTokenizer, .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B].contains(self)
+        [.embeddingGemmaTokenizer, .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B, .conformalCalibration].contains(self)
     }
 
     var displayName: String {
@@ -32,6 +33,8 @@ nonisolated enum DownloadableModel:
             String(localized: "Embedding Gemma 300M")
         case .embeddingGemmaTokenizer:
             String(localized: "Embedding Gemma tokenizer")
+        case .conformalCalibration:
+            String(localized: .captionCertaintyCalibration)
         case .embeddingGemmaIDFE2B:
             String(localized: "BERTScore calibration for Gemma 4 E2B")
         case .embeddingGemmaIDFE4B:
@@ -51,9 +54,9 @@ nonisolated enum DownloadableModel:
         case .embeddingGemma:
             String(
                 localized:
-                    "Compares atomic statements by meaning. Its tokenizer and IDF calibrations are also included."
+                    "Compares atomic statements by meaning. Its tokenizer, IDF calibrations, and certainty calibration are also included."
             )
-        case .embeddingGemmaTokenizer, .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B:
+        case .embeddingGemmaTokenizer, .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B, .conformalCalibration:
             String(localized: "Required by Embedding Gemma 300M.")
         }
     }
@@ -99,9 +102,17 @@ nonisolated enum DownloadableModel:
                 model: self,
                 fileName: EmbeddingModelResources.modelFilename,
                 sha256: "84bb72b8944df79a0f3650a50798c75cab5b3c0c4abdaeb5d45871b7c53dd7c5",
-                dependencies: [.embeddingGemmaTokenizer, .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B],
+                dependencies: [.embeddingGemmaTokenizer, .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B, .conformalCalibration],
                 source: .direct(URL(string: "https://uci-repack.s3.us-west-2.amazonaws.com/"
                     + EmbeddingModelResources.modelFilename)!)
+            )
+        case .conformalCalibration:
+            ModelDescriptor(
+                model: self,
+                fileName: ConformalCalibration.filename,
+                sha256: "23405ec99f31dfaa0d34dc75619cb005174ed92ff08f69c84be65f165a3097f6",
+                dependencies: [],
+                source: .direct(URL(string: "https://uci-repack.s3.us-west-2.amazonaws.com/conformal_calibration.json")!)
             )
         case .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B:
             ModelDescriptor(

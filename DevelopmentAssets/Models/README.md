@@ -8,3 +8,5 @@ BERTScore also requires `embeddinggemma-300m-bertscore-layer16-seq256-f32.tflite
 `sentencepiece.model`, and both `vlm-gemma-4-*_llm-gemma-4-e2b.json` calibration files.
 The old sentence-vector model does not provide the token output that BERTScore needs.
 See the [export instructions](../../scripts/embeddinggemma/README.md) to generate the token model.
+
+The interactive caption flow also requires `conformal_calibration.json`. Debug builds include this file from this directory. Production downloads include it with Embedding Gemma. The app uses the matching E2B or E4B table to convert requested certainty into a BERTScore threshold.
