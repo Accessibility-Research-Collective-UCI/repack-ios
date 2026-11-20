@@ -1029,6 +1029,45 @@ struct REPACKTests {
         #expect(fixture.factory.textState.generatedTextRequests.count == requests.count)
     }
 
+    @Test("Cancelling alternate rendering keeps completed output and resumes unfinished work")
+    func renderingCancellation() async throws {
+        let fixture = Fixture()
+        fixture.factory.textState.textDelay = .milliseconds(100)
+        let pipeline = try await REPACKPipeline(modelURL: fixture.modelURL, engineFactory: fixture.factory)
+        let calibration = try certaintyFixture()
+        let result = CaptionResult(captions: [], atomizedCaptions: [],
+            scoredAtomics: [
+                ScoredAtomic(index: 0, statement: "claim", matches: [], averageScore: 1),
+                ScoredAtomic(index: 1, statement: "medium claim", matches: [], averageScore: calibration.threshold(certainty: 80))
+            ],
+            retainedAtomics: ["claim"], caption: "claim", threshold: calibration.threshold(certainty: 90),
+            scoringMetric: .semanticSimilarity, timings: [])
+        let controller = OutputRenderingsController()
+        let task = Task {
+            await controller.prepare(result: result, pipeline: pipeline, calibration: calibration) { _ in }
+        }
+        try await waitUntil { fixture.factory.textState.generatedTextRequests.count == 1 }
+        task.cancel()
+        await task.value
+        #expect(controller.captions[.atomic] != nil)
+        #expect(controller.captions[.stratified] == nil)
+        #expect(controller.errors.isEmpty)
+        await controller.prepare(result: result, pipeline: pipeline, calibration: calibration) { _ in }
+        #expect(controller.captions.count == 3)
+        #expect(fixture.factory.textState.maximumConcurrentTextRequests == 1)
+        let highGroupRequests = {
+            fixture.factory.textState.generatedTextRequests.filter {
+                $0.systemPrompt == Prompts.confidenceGroupPrompt
+                    && $0.userPrompt.contains(OutputRenderingsController.prefixes[0])
+            }.count
+        }
+        #expect(highGroupRequests() == 1)
+        controller.reset()
+        #expect(controller.captions.isEmpty)
+        await controller.prepare(result: result, pipeline: pipeline, calibration: calibration) { _ in }
+        #expect(highGroupRequests() == 2)
+    }
+
     @Test("A failed representation does not hide successful output and retries independently")
     func renderingRetry() async throws {
         let fixture = Fixture()

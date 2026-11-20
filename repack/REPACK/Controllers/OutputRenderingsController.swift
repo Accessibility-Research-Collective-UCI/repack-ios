@@ -34,12 +34,14 @@ final class OutputRenderingsController {
     var revision = 0
     private var worker: Task<Void, Never>?
     private var epoch = UUID()
+    private var confidenceGroups: [String] = []
 
     func reset() {
         worker?.cancel()
         epoch = UUID()
         selection = .repack
         captions = [:]
+        confidenceGroups = []
         errors = [:]
         generating = nil
         displayedCertainty = 90
@@ -104,19 +106,19 @@ final class OutputRenderingsController {
                             "\(calibration.percentage(score: $0.averageScore))%: \($0.statement)"
                         }.joined(separator: "\n")
                     case .stratified:
-                        var groups: [String] = []
                         var remaining = Self.sorted(result.scoredAtomics)
                         for index in 0..<3 {
                             let cutoff = index == 0 ? calibration.threshold(certainty: 90) : calibration.threshold(certainty: 80)
                             let group = index == 2 ? remaining : remaining.filter { $0.averageScore >= cutoff }
                             if index < 2 { remaining.removeAll { $0.averageScore >= cutoff } }
+                            guard index >= self.confidenceGroups.count else { continue }
                             let text = group.isEmpty ? Self.emptyGroups[index]
                                 : try await pipeline.confidenceGroup(atomics: group.map(\.statement), prefix: Self.prefixes[index])
                             try Task.checkCancellation()
                             guard self.epoch == epoch else { return }
-                            groups.append(text)
+                            self.confidenceGroups.append(text)
                         }
-                        text = groups.joined(separator: "\n\n")
+                        text = self.confidenceGroups.joined(separator: "\n\n")
                     case .hedged:
                         let threshold = calibration.threshold(certainty: 90)
                         let certain = result.scoredAtomics.filter { $0.averageScore > threshold }.map(\.statement)
