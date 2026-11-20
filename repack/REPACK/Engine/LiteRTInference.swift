@@ -14,6 +14,7 @@ protocol InferenceEngine: AnyObject {
 final class LiteRTInferenceEngine: InferenceEngine {
     let engine: Engine
     private var activeConversation: Conversation?
+    private var activeConversationID: UUID?
 
     init(engine: Engine) {
         self.engine = engine
@@ -127,10 +128,13 @@ final class LiteRTInferenceEngine: InferenceEngine {
     }
 
     private func send(_ message: Message, through conversation: Conversation) async throws -> Message {
+        let conversationID = UUID()
         activeConversation = conversation
+        activeConversationID = conversationID
         defer {
             if activeConversation === conversation {
                 activeConversation = nil
+                activeConversationID = nil
             }
         }
 
@@ -138,6 +142,7 @@ final class LiteRTInferenceEngine: InferenceEngine {
             try await conversation.sendMessage(message)
         } onCancel: {
             Task { @MainActor [weak self] in
+                guard self?.activeConversationID == conversationID else { return }
                 await self?.cancel()
             }
         }
