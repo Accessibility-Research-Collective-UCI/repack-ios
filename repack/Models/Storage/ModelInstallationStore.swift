@@ -43,7 +43,7 @@ struct ModelInstallationStore {
                         origin: approvedModel == nil ? .imported : .approved,
                         model: approvedModel,
                         explicitlyOwned:
-                            approvedModel != .embeddingGemmaTokenizer,
+                            approvedModel?.isEmbeddingDependency != true,
                         requiredBy: [],
                         byteCount: byteCount
                     )

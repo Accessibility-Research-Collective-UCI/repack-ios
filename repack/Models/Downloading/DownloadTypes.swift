@@ -51,12 +51,12 @@ nonisolated struct DownloadPlan: Identifiable, Equatable, Sendable {
             if policy == .validateAndRemove {
                 return String(
                     localized:
-                        "DEBUG: Embedding Gemma and its tokenizer will be downloaded and validated, temporarily using approximately \(formattedTotalSize). The downloaded test files will be deleted after validation."
+                        "DEBUG: Embedding Gemma, its tokenizer, and IDF calibrations will be downloaded and validated, temporarily using approximately \(formattedTotalSize). The downloaded test files will be deleted after validation."
                 )
             }
             return String(
                 localized:
-                    "Embedding Gemma and its tokenizer will use approximately \(formattedTotalSize) on this iPhone."
+                    "Embedding Gemma, its tokenizer, and IDF calibrations will use approximately \(formattedTotalSize) on this iPhone."
             )
         }
 

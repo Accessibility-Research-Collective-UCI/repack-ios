@@ -1,0 +1,13 @@
+{
+  "model": "google/embeddinggemma-300m",
+  "revision": "main",
+  "layer": 16,
+  "final_rms_norm": true,
+  "sequence_length": 256,
+  "filename": "embeddinggemma-300m-bertscore-layer16-seq256-f32.tflite",
+  "sha256": "84bb72b8944df79a0f3650a50798c75cab5b3c0c4abdaeb5d45871b7c53dd7c5",
+  "tokenizer_sha256": "d6daa52d93d7aad10e8388bd526c4e501d914b47177398d1d9621f1fe48438c7",
+  "tokenizer_model_max_length": 2048,
+  "max_normalized_token_error": 9.864568710327148e-06,
+  "max_f1_error": 2.468095385843583e-07
+}
