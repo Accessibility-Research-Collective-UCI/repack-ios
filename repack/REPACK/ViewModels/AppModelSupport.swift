@@ -31,7 +31,12 @@ extension AppModel {
                 engineFactory: engineFactory,
                 devicePolicy: devicePolicy,
                 embeddingProvider: EmbeddingModelResources.available().map {
-                    EmbeddingGemmaService(resources: $0)
+                    EmbeddingGemmaService(
+                        resources: $0,
+                        calibration: try? IDFCalibration.resolve(
+                            visionModel: modelURL, textModel: processingModelURL
+                        )
+                    )
                 }
             )
             phase = hasPendingCaptionRun

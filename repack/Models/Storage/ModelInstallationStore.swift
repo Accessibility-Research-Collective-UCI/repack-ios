@@ -32,7 +32,17 @@ struct ModelInstallationStore {
                 (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             )
             if let index = records.firstIndex(where: { $0.fileName == fileName }) {
-                records[index].byteCount = byteCount
+                let record = records[index]
+                if record.origin == .approved, let model = record.model,
+                   model.fileName != fileName {
+                    // Keep obsolete artifacts removable without linking them to their replacements.
+                    records[index] = InstallationRecord(
+                        fileName: fileName, origin: .imported, model: nil,
+                        explicitlyOwned: true, requiredBy: [], byteCount: byteCount
+                    )
+                } else {
+                    records[index].byteCount = byteCount
+                }
             } else {
                 let approvedModel = DownloadableModel.allCases.first {
                     $0.fileName == fileName
@@ -43,7 +53,7 @@ struct ModelInstallationStore {
                         origin: approvedModel == nil ? .imported : .approved,
                         model: approvedModel,
                         explicitlyOwned:
-                            approvedModel != .embeddingGemmaTokenizer,
+                            approvedModel?.isEmbeddingDependency != true,
                         requiredBy: [],
                         byteCount: byteCount
                     )

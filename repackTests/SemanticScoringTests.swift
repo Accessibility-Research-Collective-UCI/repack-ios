@@ -5,134 +5,139 @@ import Testing
 @Suite("Semantic Scoring")
 @MainActor
 struct SemanticScoringTests {
-    @Test("Bundled EmbeddingGemma model produces normalized embeddings")
-    func bundledModelSmokeTest() async throws {
-        let resources = try #require(
-            EmbeddingModelResources.bundled(in: .main)
-        )
-        let service = EmbeddingGemmaService(resources: resources)
+    @Test("IDF counts documents, preserves duplicate documents, and weights unseen tokens")
+    func idfDocuments() {
+        var idf = IDFWeights()
+        idf.addDocument([2, 10, 10, 1])
+        idf.addDocument([2, 10, 10, 1])
+        idf.addDocument([2, 20, 1])
+        #expect(idf.documentCount == 3)
+        #expect(idf[2] == 0)
+        #expect(idf[1] == 0)
+        #expect(abs(idf[10] - Float(log(4.0 / 3))) < 1e-6)
+        #expect(abs(idf[20] - Float(log(2.0))) < 1e-6)
+        #expect(abs(idf[99] - Float(log(4.0))) < 1e-6)
+    }
 
-        let vectors = try await service.embeddings(
-            for: ["A red package.", "A white logo."]
-        )
-
-        #expect(vectors.count == 2)
-        #expect(vectors.allSatisfy {
-            $0.count == EmbeddingGemmaService.embeddingDimension
-        })
-        for vector in vectors {
-            let squaredMagnitude = vector.reduce(0) {
-                $0 + Double($1 * $1)
-            }
-            #expect(abs(squaredMagnitude - 1) < 0.000_1)
+    @Test("Calibration validates the pair and preserves repeated statements")
+    func calibrationCorpus() throws {
+        let data = Data(#"{"vlm":"gemma-4-e4b","llm":"gemma-4-e2b","sources":[{"statements":["a","a"]},{"statements":["b"]}]}"#.utf8)
+        #expect(try IDFCalibration.e4b.statements(from: data) == ["a", "a", "b"])
+        #expect(throws: SemanticScoringError.unsupportedCalibration) {
+            try IDFCalibration.e2b.statements(from: data)
+        }
+        #expect(throws: (any Error).self) {
+            try IDFCalibration.e4b.statements(from: Data("{}".utf8))
+        }
+        let empty = Data(#"{"vlm":"gemma-4-e2b","llm":"gemma-4-e2b","sources":[]}"#.utf8)
+        #expect(throws: SemanticScoringError.emptyCalibration) {
+            try IDFCalibration.e2b.statements(from: empty)
         }
     }
 
-    @Test("Semantic scoring finds the best statement within each sample")
-    func bestMatchesAndAverages() async throws {
-        let scorer: any CaptionScorer = SemanticCaptionScorer()
-        let reference = PreparedCaptionScoringInput(
-            captionID: 0,
-            statements: ["red package", "white logo"],
-            vectors: [
-                [1, 0],
-                [0, 1]
-            ]
-        )
-        let diagonal = Float(1 / Double(2).squareRoot())
+    @Test("Calibration follows the vision and text model pair")
+    func calibrationSelection() throws {
+        let e2b = URL(filePath: "/models/gemma-4-E2B-it.litertlm")
+        let e4b = URL(filePath: "/models/gemma-4-E4B-it.litertlm")
+        #expect(try IDFCalibration.resolve(visionModel: e2b, textModel: e2b) == .e2b)
+        #expect(try IDFCalibration.resolve(visionModel: e4b, textModel: e2b) == .e4b)
+        #expect(throws: SemanticScoringError.unsupportedCalibration) {
+            try IDFCalibration.resolve(visionModel: e4b, textModel: e4b)
+        }
+    }
+
+    @Test("Weighted token matching uses both directions and non-square matrices")
+    func weightedF1() throws {
+        let reference = try embedding([[1, 0], [0, 1]], weights: [1, 3])
+        let sample = try embedding([[1, 0]])
+        // Precision = 1/4, recall = 1, F1 = 0.4. Sentence pooling gives another score.
+        #expect(abs(try BERTScore.f1(reference, sample) - 0.4) < 1e-6)
+        #expect(abs(try BERTScore.f1(sample, reference) - 0.4) < 1e-6)
+        #expect(abs(try BERTScore.f1(reference, reference) - 1) < 1e-6)
+    }
+
+    @Test("Zero-weight special tokens remain possible matching targets")
+    func specialTokenMatching() throws {
+        let reference = try embedding([[1, 0]], weights: [1])
+        let sample = try embedding([[1, 0], [0.6, 0.8]], weights: [0, 1])
+        #expect(abs(try BERTScore.f1(reference, sample) - 0.75) < 1e-6)
+        let zero = try embedding([[1, 0]], weights: [0])
+        #expect(try BERTScore.f1(zero, reference) == 0)
+    }
+
+    @Test("Duplicate atomics preserve occurrences, sample membership, ties, and averages")
+    func duplicateMatches() async throws {
+        let x = try embedding([[1, 0]])
+        let y = try embedding([[0, 1]])
+        let reference = PreparedCaptionScoringInput(captionID: 0,
+            statements: ["reference", "reference"], embeddings: [x, x])
         let samples = [
-            PreparedCaptionScoringInput(
-                captionID: 1,
-                statements: ["red box", "bright mark"],
-                vectors: [
-                    [1, 0],
-                    [0, 1]
-                ]
-            ),
-            PreparedCaptionScoringInput(
-                captionID: 2,
-                statements: ["colored object"],
-                vectors: [[diagonal, diagonal]]
-            )
+            PreparedCaptionScoringInput(captionID: 1,
+                statements: ["first", "tie", "first"], embeddings: [x, x, x]),
+            PreparedCaptionScoringInput(captionID: 2, statements: ["other"], embeddings: [y]),
+            PreparedCaptionScoringInput(captionID: 3, statements: [], embeddings: [])
         ]
-
-        let results = try await scorer.score(
-            reference: reference,
-            samples: samples,
-            progress: { _, _ in }
-        )
-
+        let results = try await SemanticCaptionScorer().score(reference: reference, samples: samples,
+                                                             progress: { _, _ in })
         #expect(results.count == 2)
-        #expect(results[0].matches.map(\.statement) == ["red box", "colored object"])
-        #expect(results[1].matches.map(\.statement) == ["bright mark", "colored object"])
-        #expect(abs(results[0].averageScore - 0.853_553_4) < 0.000_001)
-        #expect(abs(results[1].averageScore - 0.853_553_4) < 0.000_001)
+        #expect(results.map(\.index) == [0, 1])
+        for result in results {
+            #expect(result.matches.map(\.statement) == ["first", "other", nil])
+            #expect(result.matches.map(\.score) == [1, 0, 0])
+            #expect(abs(result.averageScore - 1.0 / 3) < 1e-6)
+        }
     }
 
-    @Test("Semantic scoring transposes non-square embedding matrices correctly")
-    func nonSquareEmbeddingMatrix() async throws {
-        let scorer: any CaptionScorer = SemanticCaptionScorer()
-        let reference = PreparedCaptionScoringInput(
-            captionID: 0,
-            statements: ["x axis", "y axis"],
-            vectors: [
-                [1, 0, 0],
-                [0, 1, 0]
-            ]
-        )
-        let diagonal = Float(1 / Double(2).squareRoot())
-        let sample = PreparedCaptionScoringInput(
-            captionID: 1,
-            statements: ["x match", "y match", "diagonal"],
-            vectors: [
-                [1, 0, 0],
-                [0, 1, 0],
-                [diagonal, diagonal, 0]
-            ]
-        )
-
-        let results = try await scorer.score(
-            reference: reference,
-            samples: [sample],
-            progress: { _, _ in }
-        )
-
-        #expect(results.map(\.matches[0].statement) == ["x match", "y match"])
-        #expect(results.map(\.matches[0].score) == [1, 1])
+    @Test("Invalid embedding data and mismatched statement counts fail")
+    func invalidInput() async throws {
+        #expect(throws: SemanticScoringError.invalidEmbedding) {
+            try embedding([[Float.nan, 0]])
+        }
+        #expect(throws: SemanticScoringError.invalidEmbeddingDimension) {
+            try TokenEmbedding(tokenIDs: [1], vectors: [1], dimension: 2, weights: [1])
+        }
+        #expect(throws: SemanticScoringError.invalidEmbeddingDimension) {
+            try BERTScore.f1(embedding([[1, 0]]), embedding([[1, 0, 0]]))
+        }
+        await #expect(throws: SemanticScoringError.statementVectorCountMismatch) {
+            try await SemanticCaptionScorer().score(
+                reference: PreparedCaptionScoringInput(captionID: 0, statements: ["a"], embeddings: []),
+                samples: [], progress: { _, _ in })
+        }
     }
 
-    @Test("Negative similarity and empty samples score zero")
-    func clampingAndEmptySamples() async throws {
-        let scorer: any CaptionScorer = SemanticCaptionScorer()
-        let reference = PreparedCaptionScoringInput(
-            captionID: 0,
-            statements: ["reference"],
-            vectors: [[1, 0]]
-        )
-        let samples = [
-            PreparedCaptionScoringInput(
-                captionID: 1,
-                statements: ["opposite"],
-                vectors: [[-1, 0]]
-            ),
-            PreparedCaptionScoringInput(
-                captionID: 2,
-                statements: [],
-                vectors: []
-            )
-        ]
+    @Test("Cancellation stops token matching")
+    func cancellation() async throws {
+        let value = try embedding([[1, 0]])
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try BERTScore.f1(value, value)
+        }
+        await #expect(throws: CancellationError.self) { try await task.value }
+    }
 
-        let result = try #require(
-            try await scorer.score(
-                reference: reference,
-                samples: samples,
-                progress: { _, _ in }
-            ).first
-        )
+    @Test("Bundled token model produces normalized token vectors",
+          .enabled(if: EmbeddingModelResources.bundled() != nil))
+    func bundledModelSmokeTest() async throws {
+        let resources = try #require(EmbeddingModelResources.bundled())
+        let service = EmbeddingGemmaService(resources: resources, calibration: .e2b)
+        let values = try await service.embeddings(for: ["A red package.", "A red package."])
+        #expect(values.count == 2)
+        #expect(values[0] == values[1])
+        #expect(values[0].tokenIDs == [2, 236776, 2604, 8289, 236761, 1])
+        for value in values {
+            for token in value.tokenIDs.indices {
+                let start = token * value.dimension
+                let magnitude = value.vectors[start..<(start + value.dimension)].reduce(0) { $0 + $1 * $1 }
+                #expect(abs(magnitude - 1) < 1e-4)
+            }
+        }
+        await service.clearStatementCache()
+    }
 
-        #expect(result.matches.map(\.score) == [0, 0])
-        #expect(result.matches[0].statement == "opposite")
-        #expect(result.matches[1].statement == nil)
-        #expect(result.averageScore == 0)
+    private func embedding(_ vectors: [[Float]], weights: [Float]? = nil) throws -> TokenEmbedding {
+        try TokenEmbedding(tokenIDs: Array(vectors.indices), vectors: vectors.flatMap { $0 },
+                           dimension: vectors.first?.count ?? 2,
+                           weights: weights ?? Array(repeating: 1, count: vectors.count))
     }
 }

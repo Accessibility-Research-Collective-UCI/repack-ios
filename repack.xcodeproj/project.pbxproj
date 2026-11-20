@@ -214,7 +214,7 @@
 				"SOURCE_MODELS=\"${SRCROOT}/DevelopmentAssets/Models\"",
 				"DESTINATION_MODELS=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/DevelopmentModels\"",
 				"mkdir -p \"${DESTINATION_MODELS}\"",
-				"rsync -a --delete --include='*.litertlm' --include='embeddinggemma-300M_seq256_mixed-precision.tflite' --include='sentencepiece.model' --exclude='*' \"${SOURCE_MODELS}/\" \"${DESTINATION_MODELS}/\"",
+				"rsync -a --delete --include='*.litertlm' --include='embeddinggemma-300m-bertscore-layer16-seq256-f32.tflite' --include='vlm-gemma-4-e2b_llm-gemma-4-e2b.json' --include='vlm-gemma-4-e4b_llm-gemma-4-e2b.json' --include='sentencepiece.model' --exclude='*' \"${SOURCE_MODELS}/\" \"${DESTINATION_MODELS}/\"",
 				"",
 			);
 		};

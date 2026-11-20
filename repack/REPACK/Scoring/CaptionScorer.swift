@@ -5,21 +5,23 @@ typealias ScoringProgressHandler = @MainActor @Sendable (Int, Int) -> Void
 nonisolated struct PreparedCaptionScoringInput: Equatable, Sendable {
     let captionID: Int
     let statements: [String]
-    let vectors: [[Float]]?
+    let embeddings: [TokenEmbedding]?
 
     init(
         captionID: Int,
         statements: [String],
-        vectors: [[Float]]? = nil
+        embeddings: [TokenEmbedding]? = nil
     ) {
         self.captionID = captionID
         self.statements = statements
-        self.vectors = vectors
+        self.embeddings = embeddings
     }
 }
 
 nonisolated protocol CaptionScorer: Sendable {
     var metric: ScoringMetric { get }
+
+    func clearPreparationCache() async
 
     func prepare(
         captionID: Int,
@@ -31,4 +33,8 @@ nonisolated protocol CaptionScorer: Sendable {
         samples: [PreparedCaptionScoringInput],
         progress: @escaping ScoringProgressHandler
     ) async throws -> [ScoredAtomic]
+}
+
+extension CaptionScorer {
+    func clearPreparationCache() async {}
 }

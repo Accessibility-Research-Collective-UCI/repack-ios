@@ -1,128 +1,92 @@
 import Foundation
 import SentencepieceTokenizer
 
-/// Serializes access to the stateful LiteRT embedding interpreter.
+/// Owns the interpreter, calibration, and run-scoped statement cache on one actor.
 actor EmbeddingGemmaService: TextEmbeddingProviding {
     static let sequenceLength = 256
     static let embeddingDimension = 768
-    static let prompt = "task: sentence similarity | query: "
+    static let calibrationSequenceLength = 2048
 
     private let resources: EmbeddingModelResources
+    private let calibration: IDFCalibration?
     private let threadCount: Int
-    private let clock = ContinuousClock()
-
     private var interpreter: LiteRTEmbeddingInterpreter?
     private var tokenizer: SentencepieceTokenizer?
+    private var idf: IDFWeights?
+    private var statementCache: [String: TokenEmbedding] = [:]
 
-    init(resources: EmbeddingModelResources, threadCount: Int = 4) {
+    init(resources: EmbeddingModelResources, calibration: IDFCalibration?, threadCount: Int = 4) {
         self.resources = resources
+        self.calibration = calibration
         self.threadCount = threadCount
     }
 
-    func embeddings(for statements: [String]) async throws -> [[Float]] {
-        try Task.checkCancellation()
-        let requiresPreparation = interpreter == nil
-        let preparationStart = clock.now
-        try prepareIfNeeded()
-        if requiresPreparation {
-            debugLog(
-                "Prepared EmbeddingGemma in "
-                    + "\(preparationStart.duration(to: clock.now)) "
-                    + "with \(threadCount) CPU threads."
-            )
-        }
+    func clearStatementCache() { statementCache.removeAll() }
 
-        let batchStart = clock.now
-        var result: [[Float]] = []
-        result.reserveCapacity(statements.count)
-        for (index, statement) in statements.enumerated() {
+    func embeddings(for statements: [String]) async throws -> [TokenEmbedding] {
+        try Task.checkCancellation()
+        try prepareIfNeeded()
+        var result: [TokenEmbedding] = []
+        for statement in statements {
             try Task.checkCancellation()
-            let embeddingStart = clock.now
-            result.append(try embedding(for: statement))
-            debugLog(
-                "Computed EmbeddingGemma embedding \(index + 1)/\(statements.count) "
-                    + "in \(embeddingStart.duration(to: clock.now))."
-            )
+            if let cached = statementCache[statement] {
+                result.append(cached)
+            } else {
+                let embedding = try embedding(for: statement)
+                statementCache[statement] = embedding
+                result.append(embedding)
+            }
         }
-        debugLog(
-            "Computed \(result.count) EmbeddingGemma embeddings in "
-                + "\(batchStart.duration(to: clock.now))."
-        )
         return result
     }
 
     private func prepareIfNeeded() throws {
         guard interpreter == nil else { return }
-
-        let delegationStart = clock.now
-        let interpreter = try LiteRTEmbeddingInterpreter(
-            modelURL: resources.modelURL,
-            threadCount: threadCount,
-            sequenceLength: Self.sequenceLength,
-            embeddingDimension: Self.embeddingDimension
-        )
-        debugLog(
-            "Created and allocated the EmbeddingGemma interpreter with an "
-                + "explicit \(threadCount)-thread XNNPACK delegate in "
-                + "\(delegationStart.duration(to: clock.now))."
-        )
-
+        guard let calibration else { throw SemanticScoringError.unsupportedCalibration }
         let tokenizer = try SentencepieceTokenizer(
-            modelPath: resources.tokenizerURL.path(percentEncoded: false),
-            tokenOffset: 0
+            modelPath: resources.tokenizerURL.path(percentEncoded: false), tokenOffset: 0
         )
-        guard tokenizer.padTokenId == 0,
-              tokenizer.eosTokenId == 1,
+        guard tokenizer.padTokenId == 0, tokenizer.eosTokenId == 1,
               tokenizer.bosTokenId == 2 else {
-            throw SemanticScoringError.invalidModelSignature(
-                "tokenizer special token IDs do not match EmbeddingGemma"
-            )
+            throw SemanticScoringError.invalidModelSignature("Unexpected special token IDs")
         }
-
-        self.interpreter = interpreter
-        self.tokenizer = tokenizer
-    }
-
-    private func embedding(for statement: String) throws -> [Float] {
-        guard let handle = interpreter,
-              let tokenizer else {
-            throw SemanticScoringError.invalidModelSignature(
-                "interpreter was not fully prepared"
-            )
-        }
-        let encoded = try tokenizer.encode(Self.prompt + statement)
-        let contentLimit = Self.sequenceLength - 2
-        var inputIDs = [Int32]()
-        inputIDs.reserveCapacity(Self.sequenceLength)
-        inputIDs.append(Int32(tokenizer.bosTokenId))
-        inputIDs.append(contentsOf: encoded.prefix(contentLimit).map(Int32.init))
-        inputIDs.append(Int32(tokenizer.eosTokenId))
-
-        let paddingCount = Self.sequenceLength - inputIDs.count
-        inputIDs.append(
-            contentsOf: repeatElement(
-                Int32(tokenizer.padTokenId),
-                count: paddingCount
-            )
+        let statements = try calibration.statements(
+            from: Data(contentsOf: resources.calibrationURL(for: calibration))
         )
-
-        return try normalized(handle.invoke(inputIDs))
+        var weights = IDFWeights()
+        for statement in statements {
+            try Task.checkCancellation()
+            // Match the Python tokenizer limit, independently of the mobile inference window.
+            let content = try tokenizer.encode(statement.trimmingCharacters(in: .whitespacesAndNewlines))
+            weights.addDocument([2] + content.prefix(Self.calibrationSequenceLength - 2) + [1])
+        }
+        let interpreter = try LiteRTEmbeddingInterpreter(
+            modelURL: resources.modelURL, threadCount: threadCount,
+            sequenceLength: Self.sequenceLength, embeddingDimension: Self.embeddingDimension
+        )
+        self.tokenizer = tokenizer
+        self.idf = weights
+        self.interpreter = interpreter
     }
 
-    private func normalized(_ values: [Float]) throws -> [Float] {
-        let squaredSum = values.reduce(Float.zero) { partial, value in
-            partial + value * value
+    private func embedding(for statement: String) throws -> TokenEmbedding {
+        guard let interpreter, let tokenizer, let idf else {
+            throw SemanticScoringError.invalidModelSignature("Interpreter was not prepared")
         }
-        let magnitude = sqrt(squaredSum)
-        guard magnitude.isFinite, magnitude > 0 else {
-            throw SemanticScoringError.invalidEmbedding
+        let content = try tokenizer.encode(statement.trimmingCharacters(in: .whitespacesAndNewlines))
+        let tokens = [2] + content.prefix(Self.sequenceLength - 2) + [1]
+        let padding = Self.sequenceLength - tokens.count
+        let inputIDs = tokens.map(Int32.init) + Array(repeating: Int32(0), count: padding)
+        var values = Array(try interpreter.invoke(inputIDs).prefix(tokens.count * Self.embeddingDimension))
+        for index in tokens.indices {
+            try Task.checkCancellation()
+            let range = (index * Self.embeddingDimension)..<((index + 1) * Self.embeddingDimension)
+            let magnitude = sqrt(values[range].reduce(Float.zero) { $0 + $1 * $1 })
+            guard magnitude.isFinite, magnitude > 0 else { throw SemanticScoringError.invalidEmbedding }
+            for offset in range { values[offset] /= magnitude }
         }
-        return values.map { $0 / magnitude }
-    }
-
-    private func debugLog(_ message: @autoclosure () -> String) {
-        #if DEBUG
-        print("[REPACK] \(message())")
-        #endif
+        return try TokenEmbedding(tokenIDs: tokens, vectors: values,
+                                  dimension: Self.embeddingDimension,
+                                  weights: tokens.map { idf[$0] })
     }
 }

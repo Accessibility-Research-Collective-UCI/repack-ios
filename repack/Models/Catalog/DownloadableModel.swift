@@ -10,11 +10,17 @@ nonisolated enum DownloadableModel:
     case e4b
     case embeddingGemma
     case embeddingGemmaTokenizer
+    case embeddingGemmaIDFE2B
+    case embeddingGemmaIDFE4B
 
     static let imageCaptioningModels: [DownloadableModel] = [.e2b, .e4b]
     static let embeddingModels: [DownloadableModel] = [.embeddingGemma]
 
     var id: Self { self }
+
+    var isEmbeddingDependency: Bool {
+        [.embeddingGemmaTokenizer, .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B].contains(self)
+    }
 
     var displayName: String {
         switch self {
@@ -26,6 +32,10 @@ nonisolated enum DownloadableModel:
             String(localized: "Embedding Gemma 300M")
         case .embeddingGemmaTokenizer:
             String(localized: "Embedding Gemma tokenizer")
+        case .embeddingGemmaIDFE2B:
+            String(localized: "BERTScore calibration for Gemma 4 E2B")
+        case .embeddingGemmaIDFE4B:
+            String(localized: "BERTScore calibration for Gemma 4 E4B")
         }
     }
 
@@ -41,9 +51,9 @@ nonisolated enum DownloadableModel:
         case .embeddingGemma:
             String(
                 localized:
-                    "Compares atomic statements by meaning. Its tokenizer is also included."
+                    "Compares atomic statements by meaning. Its tokenizer and IDF calibrations are also included."
             )
-        case .embeddingGemmaTokenizer:
+        case .embeddingGemmaTokenizer, .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B:
             String(localized: "Required by Embedding Gemma 300M.")
         }
     }
@@ -88,14 +98,21 @@ nonisolated enum DownloadableModel:
             ModelDescriptor(
                 model: self,
                 fileName: EmbeddingModelResources.modelFilename,
-                sha256: "37115ef7bff76cd37dd86abe503ff511b1032bf85fc624a85c49c84899e92bc5",
-                dependencies: [.embeddingGemmaTokenizer],
-                source: .direct(
-                    URL(
-                        string:
-                            "https://uci-repack.s3.us-west-2.amazonaws.com/embeddinggemma-300M_seq256_mixed-precision.tflite"
-                    )!
-                )
+                sha256: "84bb72b8944df79a0f3650a50798c75cab5b3c0c4abdaeb5d45871b7c53dd7c5",
+                dependencies: [.embeddingGemmaTokenizer, .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B],
+                source: .direct(URL(string: "https://uci-repack.s3.us-west-2.amazonaws.com/"
+                    + EmbeddingModelResources.modelFilename)!)
+            )
+        case .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B:
+            ModelDescriptor(
+                model: self,
+                fileName: (self == .embeddingGemmaIDFE2B ? IDFCalibration.e2b : .e4b).filename,
+                sha256: self == .embeddingGemmaIDFE2B
+                    ? "b8be9a3aa4ed556cf252de32d1e20eb3d0a6d4f77caa69b1aa1bff91e99d0e73"
+                    : "ec50edfb69d01476fe25fa69e46ce8d891a6ae8ef7f8496ce541ad09e45b23a6",
+                dependencies: [],
+                source: .direct(URL(string: "https://uci-repack.s3.us-west-2.amazonaws.com/"
+                    + (self == .embeddingGemmaIDFE2B ? IDFCalibration.e2b : .e4b).filename)!)
             )
         case .embeddingGemmaTokenizer:
             ModelDescriptor(
@@ -118,6 +135,11 @@ nonisolated enum DownloadableModel:
     }
 
     init?(modelURL: URL) {
+        if let exact = Self.allCases.first(where: { $0.fileName == modelURL.lastPathComponent }) {
+            self = exact
+            return
+        }
+        guard modelURL.pathExtension == "litertlm" else { return nil }
         let identifier = modelURL.deletingPathExtension().lastPathComponent.lowercased()
 
         if identifier.contains("e2b") {

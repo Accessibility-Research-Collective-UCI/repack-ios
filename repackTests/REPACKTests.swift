@@ -80,7 +80,7 @@ struct REPACKTests {
         )
         #expect(
             ScoringMetric.semanticSimilarity.generationDetailsName
-                == "Semantic Similarity (Embedding Gemma 300)"
+                == "Semantic Similarity (BERTScore F1 + IDF)"
         )
 
         viewModel.scoringMetric = .bleu
@@ -206,6 +206,7 @@ struct REPACKTests {
         #expect(result.retainedAtomics == ["red can"])
         let requests = await embeddingProvider.requests
         #expect(requests.count == 3)
+        #expect(await embeddingProvider.cacheClearCount == 2)
         #expect(requests.contains(["red can", "white logo"]))
         #expect(requests.contains(["red can"]))
         #expect(requests.contains(["red can", "blue logo"]))
@@ -1137,6 +1138,10 @@ private final class FakeEngineState {
 private actor FakeTextEmbeddingProvider: TextEmbeddingProviding {
     private let totalCaptionCount: Int?
     private let atomizedCount: (@MainActor @Sendable () -> Int)?
+    private(set) var cacheClearCount = 0
+
+    func clearStatementCache() { cacheClearCount += 1 }
+
     private(set) var requests: [[String]] = []
     private(set) var startedBeforeAllAtomization = false
 
@@ -1148,14 +1153,14 @@ private actor FakeTextEmbeddingProvider: TextEmbeddingProviding {
         self.atomizedCount = atomizedCount
     }
 
-    func embeddings(for statements: [String]) async throws -> [[Float]] {
+    func embeddings(for statements: [String]) async throws -> [TokenEmbedding] {
         requests.append(statements)
         if let totalCaptionCount, let atomizedCount,
            await atomizedCount() < totalCaptionCount {
             startedBeforeAllAtomization = true
         }
-        return statements.map { statement in
-            switch statement {
+        return try statements.map { statement in
+            let vector: [Float] = switch statement {
             case "red can":
                 [1, 0]
             case "white logo":
@@ -1163,8 +1168,9 @@ private actor FakeTextEmbeddingProvider: TextEmbeddingProviding {
             case "blue logo":
                 [-1, 0]
             default:
-                [0, 0]
+                [0, 1]
             }
+            return try TokenEmbedding(tokenIDs: [10], vectors: vector, dimension: 2, weights: [1])
         }
     }
 }

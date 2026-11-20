@@ -100,7 +100,7 @@ extension AppModel {
         }
         let removesEmbeddingModel = plan.items.contains {
             $0.record.model == .embeddingGemma
-                || $0.record.model == .embeddingGemmaTokenizer
+                || $0.record.model?.isEmbeddingDependency == true
         }
         if removesSelectedModel || removesEmbeddingModel {
             await discardPipelineAndRun()

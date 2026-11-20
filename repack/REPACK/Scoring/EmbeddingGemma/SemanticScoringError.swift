@@ -5,6 +5,8 @@ nonisolated enum SemanticScoringError: Error, Equatable, LocalizedError, Sendabl
     case statementVectorCountMismatch
     case invalidModelSignature(String)
     case invalidEmbedding
+    case unsupportedCalibration
+    case emptyCalibration
     case runtimeFailure
 
     var errorDescription: String? {
@@ -17,6 +19,10 @@ nonisolated enum SemanticScoringError: Error, Equatable, LocalizedError, Sendabl
             String(localized: "The EmbeddingGemma model has an unsupported tensor signature.")
         case .invalidEmbedding:
             String(localized: "EmbeddingGemma returned an invalid embedding.")
+        case .unsupportedCalibration:
+            String(localized: "BERTScore IDF calibration is unavailable for this model pair.")
+        case .emptyCalibration:
+            String(localized: "The BERTScore IDF calibration contains no statements.")
         case .runtimeFailure:
             String(localized: "EmbeddingGemma inference failed.")
         }

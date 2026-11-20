@@ -51,6 +51,13 @@ nonisolated struct BenchmarkSettings: Encodable, Equatable, Sendable {
 nonisolated struct REPACKExportSettings: Codable, Equatable, Sendable {
     let similarityMetric: ScoringMetric
     let similarityThreshold: Double
+    var bertScore: BERTScoreExportSettings?
+}
+
+nonisolated struct BERTScoreExportSettings: Codable, Equatable, Sendable {
+    let implementation: String
+    let modelArtifact: String
+    let calibrationFile: String?
 }
 
 nonisolated enum BenchmarkAlgorithmSettings: Encodable, Equatable, Sendable {
@@ -62,6 +69,7 @@ nonisolated enum BenchmarkAlgorithmSettings: Encodable, Equatable, Sendable {
         case algorithm
         case similarityMetric
         case similarityThreshold
+        case bertScore
         case verificationThreshold
         case classificationMethod
         case note
@@ -80,6 +88,7 @@ nonisolated enum BenchmarkAlgorithmSettings: Encodable, Equatable, Sendable {
                 settings.similarityThreshold,
                 forKey: .similarityThreshold
             )
+            try container.encodeIfPresent(settings.bertScore, forKey: .bertScore)
         case .capmas:
             try container.encode(BenchmarkAlgorithm.capmas, forKey: .algorithm)
             try container.encode(0.5, forKey: .verificationThreshold)
@@ -109,7 +118,15 @@ extension BenchmarkRunRequest {
                 algorithmSettings: .repack(
                     REPACKExportSettings(
                         similarityMetric: settings.scoringMetric,
-                        similarityThreshold: settings.similarityThreshold
+                        similarityThreshold: settings.similarityThreshold,
+                        bertScore: settings.scoringMetric == .semanticSimilarity
+                            ? BERTScoreExportSettings(
+                                implementation: "bertscore-f1-idf-layer16-v1",
+                                modelArtifact: EmbeddingModelResources.modelFilename,
+                                calibrationFile: (try? IDFCalibration.resolve(
+                                    visionModel: visionModel.url, textModel: textModel.url
+                                ))?.filename
+                            ) : nil
                     )
                 ),
                 prompt: prompt

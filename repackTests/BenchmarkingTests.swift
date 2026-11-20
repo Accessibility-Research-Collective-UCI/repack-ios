@@ -192,6 +192,30 @@ struct BenchmarkingTests {
         )
     }
 
+    @Test("Semantic exports identify BERTScore and the selected calibration")
+    func bertScoreExport() throws {
+        let original = request()
+        let semantic = BenchmarkRunRequest(
+            algorithm: .repack,
+            visionModel: ResolvedBenchmarkModel(
+                choice: .gemma4E4B, url: URL(filePath: DownloadableModel.e4b.fileName)
+            ),
+            textModel: ResolvedBenchmarkModel(
+                choice: .gemma4E2B, url: URL(filePath: DownloadableModel.e2b.fileName)
+            ),
+            algorithmConfiguration: .repack(REPACKBenchmarkConfiguration(
+                sampleCount: 5, scoringMetric: .semanticSimilarity
+            )),
+            prompt: original.prompt,
+            cooldownSeconds: 0
+        )
+        let data = try JSONEncoder().encode(semantic.exportedSettings)
+        let json = String(decoding: data, as: UTF8.self)
+        #expect(json.contains("bertscore-f1-idf-layer16-v1"))
+        #expect(json.contains(EmbeddingModelResources.modelFilename))
+        #expect(json.contains(IDFCalibration.e4b.filename))
+    }
+
     @Test("Remaining time includes only cooldowns between remaining images")
     func estimatedTimeRemaining() {
         let estimate = BenchmarkViewModel.estimatedTimeRemaining(

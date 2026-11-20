@@ -1,10 +1,14 @@
-/// Prepares Embedding Gemma vectors and scores their cosine similarity.
+/// Scores each distinct ordered statement pair once, then preserves original occurrences.
 nonisolated struct SemanticCaptionScorer: CaptionScorer {
     let metric = ScoringMetric.semanticSimilarity
     private let embeddingProvider: (any TextEmbeddingProviding)?
 
     init(embeddingProvider: (any TextEmbeddingProviding)? = nil) {
         self.embeddingProvider = embeddingProvider
+    }
+
+    func clearPreparationCache() async {
+        await embeddingProvider?.clearStatementCache()
     }
 
     func prepare(
@@ -17,7 +21,7 @@ nonisolated struct SemanticCaptionScorer: CaptionScorer {
         return PreparedCaptionScoringInput(
             captionID: captionID,
             statements: statements,
-            vectors: try await embeddingProvider.embeddings(for: statements)
+            embeddings: try await embeddingProvider.embeddings(for: statements)
         )
     }
 
@@ -28,22 +32,23 @@ nonisolated struct SemanticCaptionScorer: CaptionScorer {
         progress: @escaping ScoringProgressHandler
     ) async throws -> [ScoredAtomic] {
         guard !reference.statements.isEmpty else { return [] }
-        guard let referenceVectors = reference.vectors,
+        guard let referenceVectors = reference.embeddings,
               reference.statements.count == referenceVectors.count else {
             throw SemanticScoringError.statementVectorCountMismatch
         }
         let sampleVectors = try samples.map { sample in
-            guard let vectors = sample.vectors,
+            guard let vectors = sample.embeddings,
                   sample.statements.count == vectors.count else {
                 throw SemanticScoringError.statementVectorCountMismatch
             }
             return vectors
         }
 
-        let similarityMatrix = try SemanticSimilarityMatrix(
-            reference: referenceVectors,
-            samples: sampleVectors
-        )
+        struct Pair: Hashable {
+            let reference: String
+            let sample: String
+        }
+        var pairScores: [Pair: Float] = [:]
 
         var results: [ScoredAtomic] = []
         results.reserveCapacity(reference.statements.count)
@@ -55,22 +60,28 @@ nonisolated struct SemanticCaptionScorer: CaptionScorer {
             matches.reserveCapacity(samples.count)
 
             for (sampleOffset, sample) in samples.enumerated() {
-                let range = similarityMatrix.sampleRanges[sampleOffset]
                 var bestGeneratedIndex: Int?
                 var bestScore = -Float.infinity
 
-                for generatedIndex in range {
-                    let score = similarityMatrix[
-                        generatedIndex,
-                        referenceIndex
-                    ]
+                for generatedIndex in sample.statements.indices {
+                    try Task.checkCancellation()
+                    let pair = Pair(reference: reference.statements[referenceIndex],
+                                    sample: sample.statements[generatedIndex])
+                    let score: Float
+                    if let cached = pairScores[pair] {
+                        score = cached
+                    } else {
+                        score = try BERTScore.f1(referenceVectors[referenceIndex],
+                                                 sampleVectors[sampleOffset][generatedIndex])
+                        pairScores[pair] = score
+                    }
                     if bestGeneratedIndex == nil || score > bestScore {
                         bestGeneratedIndex = generatedIndex
                         bestScore = score
                     }
                 }
 
-                let statementIndex = bestGeneratedIndex.map { $0 - range.lowerBound }
+                let statementIndex = bestGeneratedIndex
                 matches.append(
                     AtomicMatch(
                         sampleIndex: sampleOffset + 1,

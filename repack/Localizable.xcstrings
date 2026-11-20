@@ -195,6 +195,15 @@
     "Benchmarking %@" : {
 
     },
+    "BERTScore calibration for Gemma 4 E2B" : {
+
+    },
+    "BERTScore calibration for Gemma 4 E4B" : {
+
+    },
+    "BERTScore IDF calibration is unavailable for this model pair." : {
+
+    },
     "Breaking down captions" : {
 
     },
@@ -270,7 +279,7 @@
     "Choose an Image" : {
 
     },
-    "Compares atomic statements by meaning. Its tokenizer is also included." : {
+    "Compares atomic statements by meaning. Its tokenizer and IDF calibrations are also included." : {
 
     },
     "Completed image results will be retained, but the benchmark cannot be resumed." : {
@@ -288,7 +297,7 @@
     "Custom" : {
 
     },
-    "DEBUG: Embedding Gemma and its tokenizer will be downloaded and validated, temporarily using approximately %@. The downloaded test files will be deleted after validation." : {
+    "DEBUG: Embedding Gemma, its tokenizer, and IDF calibrations will be downloaded and validated, temporarily using approximately %@. The downloaded test files will be deleted after validation." : {
 
     },
     "DEBUG: Gemma 4 E4B also requires Gemma 4 E2B. Both models will be downloaded in order and temporarily use approximately %@. The downloaded test files will be deleted after validation." : {
@@ -397,13 +406,13 @@
     "Embedding Gemma 300M" : {
 
     },
-    "Embedding Gemma and its tokenizer will use approximately %@ on this iPhone." : {
-
-    },
     "Embedding Gemma model files are not available." : {
 
     },
     "Embedding Gemma tokenizer" : {
+
+    },
+    "Embedding Gemma, its tokenizer, and IDF calibrations will use approximately %@ on this iPhone." : {
 
     },
     "Embedding Models" : {
@@ -888,10 +897,10 @@
     "Semantic Similarity" : {
 
     },
-    "Semantic Similarity (Embedding Gemma 300)" : {
+    "Semantic Similarity (BERTScore F1 + IDF)" : {
 
     },
-    "Semantic Similarity requires the EmbeddingGemma model and tokenizer." : {
+    "Semantic Similarity requires the BERTScore token model, tokenizer, and IDF calibrations." : {
 
     },
     "Shortest" : {
@@ -965,6 +974,9 @@
 
     },
     "The atomic statements could not be prepared for repackaging." : {
+
+    },
+    "The BERTScore IDF calibration contains no statements." : {
 
     },
     "The current download will stop and temporary files will be removed." : {

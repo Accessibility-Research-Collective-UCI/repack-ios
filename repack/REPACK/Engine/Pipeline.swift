@@ -412,6 +412,20 @@ private extension REPACKPipeline {
         captions: [CaptionSample],
         scorer: any CaptionScorer
     ) async throws -> AtomizationBatch {
+        await scorer.clearPreparationCache()
+        do {
+            let result = try await prepareAtomics(captions: captions, scorer: scorer)
+            await scorer.clearPreparationCache()
+            return result
+        } catch {
+            await scorer.clearPreparationCache()
+            throw error
+        }
+    }
+
+    private func prepareAtomics(
+        captions: [CaptionSample], scorer: any CaptionScorer
+    ) async throws -> AtomizationBatch {
         return try await withThrowingTaskGroup(
             of: PreparedCaptionScoringInput.self
         ) { group in

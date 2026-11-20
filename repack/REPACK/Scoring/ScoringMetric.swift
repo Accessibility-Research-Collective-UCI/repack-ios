@@ -110,7 +110,7 @@ nonisolated enum ScoringMetric: String, CaseIterable, Codable, Identifiable, Sen
         case .bleu:
             String(localized: "Lexical Similarity (BLEU-1)")
         case .semanticSimilarity:
-            String(localized: "Semantic Similarity (Embedding Gemma 300)")
+            String(localized: "Semantic Similarity (BERTScore F1 + IDF)")
         }
     }
 
@@ -124,6 +124,7 @@ nonisolated enum ScoringMetric: String, CaseIterable, Codable, Identifiable, Sen
                 adjustment: 0.01
             )
         case .semanticSimilarity:
+            // shortcut: cosine-era thresholds, recalibrate on BERTScore evaluation data.
             ThresholdConfiguration(
                 range: 0.6...1,
                 defaultValue: 0.75,

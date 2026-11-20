@@ -40,14 +40,9 @@ struct ModelDownloadTests {
         )
         #expect(e4B.dependencies == [.e2b])
         #expect(DownloadableModel.e4b.dependencyOrder == [.e2b, .e4b])
-        #expect(
-            embeddingURL.absoluteString
-                == "https://uci-repack.s3.us-west-2.amazonaws.com/embeddinggemma-300M_seq256_mixed-precision.tflite"
-        )
-        #expect(
-            embedding.sha256
-                == "37115ef7bff76cd37dd86abe503ff511b1032bf85fc624a85c49c84899e92bc5"
-        )
+        #expect(embedding.sha256 == "84bb72b8944df79a0f3650a50798c75cab5b3c0c4abdaeb5d45871b7c53dd7c5")
+        #expect(embeddingURL.absoluteString == "https://uci-repack.s3.us-west-2.amazonaws.com/"
+            + "embeddinggemma-300m-bertscore-layer16-seq256-f32.tflite")
         #expect(
             tokenizerURL.absoluteString
                 == "https://uci-repack.s3.us-west-2.amazonaws.com/sentencepiece.model"
@@ -58,7 +53,7 @@ struct ModelDownloadTests {
         )
         #expect(
             DownloadableModel.embeddingGemma.dependencyOrder
-                == [.embeddingGemmaTokenizer, .embeddingGemma]
+                == [.embeddingGemmaTokenizer, .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B, .embeddingGemma]
         )
         #expect(
             DownloadableModel.embeddingModels == [.embeddingGemma]
@@ -98,29 +93,42 @@ struct ModelDownloadTests {
         #expect(productionPlan.confirmationMessage.contains("already downloaded"))
     }
 
-    @Test("Embedding model plans include the tokenizer and model")
+    @Test("Embedding download includes the token model, tokenizer, and both calibrations")
     func embeddingModelPlan() async throws {
         let fixture = try ModelDownloadFixture()
         defer { fixture.cleanUp() }
-        let hub = FixtureModelHub(
-            sizes: [
-                DownloadableModel.embeddingGemmaTokenizer.fileName: 4,
-                DownloadableModel.embeddingGemma.fileName: 10
-            ]
-        )
+        let models = DownloadableModel.embeddingGemma.dependencyOrder
+        let hub = FixtureModelHub(sizes: Dictionary(uniqueKeysWithValues: models.map { ($0.fileName, Int64(10)) }))
         let service = fixture.service(hub: hub)
+        let plan = try await service.preparePlan(for: .embeddingGemma, policy: .install)
+        #expect(plan.files.map(\.model) == models)
+        #expect(plan.totalBytes == 40)
+    }
 
-        let plan = try await service.preparePlan(
-            for: .embeddingGemma,
-            policy: .validateAndRemove
-        )
+    @Test("Embedding installation requires the token model and both calibrations")
+    func embeddingInstallationCompleteness() async throws {
+        let fixture = try ModelDownloadFixture()
+        defer { fixture.cleanUp() }
+        let service = fixture.service(hub: FixtureModelHub())
+        try fixture.installModel(.embeddingGemmaTokenizer)
+        try fixture.installModel(.embeddingGemmaIDFE2B)
+        try Data("old pooled model".utf8).write(to: fixture.modelsDirectory.appending(
+            path: "embeddinggemma-300M_seq256_mixed-precision.tflite"
+        ))
+        #expect(await service.isInstalled(.embeddingGemma) == false)
+        try fixture.installModel(.embeddingGemma)
+        #expect(await service.isInstalled(.embeddingGemma) == false)
+        try fixture.installModel(.embeddingGemmaIDFE4B)
+        #expect(await service.isInstalled(.embeddingGemma))
+    }
 
-        #expect(
-            plan.files.map(\.model)
-                == [.embeddingGemmaTokenizer, .embeddingGemma]
-        )
-        #expect(plan.totalBytes == 14)
-        #expect(plan.confirmationMessage.contains("tokenizer"))
+    @Test("Calibration filenames resolve before caption-model substring matching")
+    func calibrationCatalog() {
+        for model in [DownloadableModel.embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B] {
+            #expect(DownloadableModel(modelURL: URL(filePath: model.fileName)) == model)
+            #expect(model.isEmbeddingDependency)
+            #expect(model.descriptor.sha256.count == 64)
+        }
     }
 
     @Test("Temporary Xet progress infers the reconstructed file length")
@@ -500,7 +508,46 @@ struct ModelDownloadTests {
         )
     }
 
-    @Test("Embedding model storage keeps its tokenizer grouped")
+    @Test("Obsolete embedding records do not delete the replacement or its dependencies")
+    @MainActor
+    func embeddingUpgradeDeletion() throws {
+        let fixture = try ModelDownloadFixture()
+        defer { fixture.cleanUp() }
+        let suite = "EmbeddingUpgrade-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let oldName = "embeddinggemma-300M_seq256_mixed-precision.tflite"
+        let old = InstallationRecord(fileName: oldName, origin: .approved,
+            model: .embeddingGemma, explicitlyOwned: true, requiredBy: [], byteCount: 1)
+        defaults.set(try PropertyListEncoder().encode([old]), forKey: "ModelInstallationRecords")
+        for model in DownloadableModel.embeddingGemma.dependencyOrder {
+            try fixture.installModel(model)
+        }
+        let oldURL = fixture.modelsDirectory.appending(path: oldName)
+        try Data([1]).write(to: oldURL)
+        let files = try FileManager.default.contentsOfDirectory(at: fixture.modelsDirectory,
+                                                               includingPropertiesForKeys: nil)
+        let store = ModelInstallationStore(defaults: defaults)
+        _ = store.reconcile([], installedFiles: files)
+        let firstRecords = store.records()
+        _ = store.reconcile([], installedFiles: files)
+        #expect(store.records() == firstRecords)
+        let items = store.records().map {
+            StorageItem(model: LocalModel(url: fixture.modelsDirectory.appending(path: $0.fileName),
+                                          isBundled: false), record: $0)
+        }
+        let obsolete = try #require(items.first { $0.record.fileName == oldName })
+        #expect(obsolete.record.model == nil)
+        #expect(obsolete.record.explicitlyOwned)
+        let resolver = ModelDependencyResolver(items: items)
+        #expect(resolver.deletionPlan(for: [obsolete.id]).ids == [obsolete.id])
+        let current = try #require(items.first { $0.record.model == .embeddingGemma })
+        let currentPlan = resolver.deletionPlan(for: [current.id])
+        #expect(currentPlan.items.count == 4)
+        #expect(!currentPlan.ids.contains(obsolete.id))
+    }
+
+    @Test("Embedding model storage groups tokenizer and both calibrations")
     @MainActor
     func embeddingStorageGrouping() async throws {
         let fixture = try ModelDownloadFixture()
@@ -521,12 +568,17 @@ struct ModelDownloadTests {
             fileName: DownloadableModel.embeddingGemma.fileName,
             data: modelData
         )
+        let calibrationFiles = [DownloadableModel.embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B].map {
+            fixtureFile(model: $0, fileName: $0.fileName, data: Data("calibration".utf8))
+        }
         let manager = ModelLibrary(
             downloadService: fixture.service(
                 hub: FixtureModelHub(
                     payloads: [
                         tokenizer.descriptor.fileName: tokenizerData,
-                        embedding.descriptor.fileName: modelData
+                        embedding.descriptor.fileName: modelData,
+                        calibrationFiles[0].descriptor.fileName: Data("calibration".utf8),
+                        calibrationFiles[1].descriptor.fileName: Data("calibration".utf8)
                     ]
                 )
             ),
@@ -534,7 +586,7 @@ struct ModelDownloadTests {
         )
         let plan = DownloadPlan(
             requestedModel: .embeddingGemma,
-            files: [tokenizer, embedding],
+            files: [tokenizer, embedding] + calibrationFiles,
             dependencyAlreadyInstalled: false,
             policy: .install
         )
@@ -556,7 +608,10 @@ struct ModelDownloadTests {
                     isBundled: false,
                     origin: .approved
                 )
-            ]
+            ] + calibrationFiles.map {
+                LocalModel(url: fixture.modelsDirectory.appending(path: $0.descriptor.fileName),
+                           isBundled: false, origin: .approved)
+            }
         )
         let tokenizerItem = try #require(
             items.first { $0.record.model == .embeddingGemmaTokenizer }
@@ -565,6 +620,10 @@ struct ModelDownloadTests {
             items.first { $0.record.model == .embeddingGemma }
         )
 
+        #expect(items.filter { $0.record.model?.isEmbeddingDependency == true }.count == 3)
+        #expect(items.filter { $0.record.model?.isEmbeddingDependency == true }.allSatisfy {
+            !$0.record.explicitlyOwned && $0.record.requiredBy == [.embeddingGemma]
+        })
         #expect(tokenizerItem.record.requiredBy == [.embeddingGemma])
         #expect(
             manager.deletionSelection(
@@ -572,13 +631,13 @@ struct ModelDownloadTests {
                 isSelected: true,
                 current: [],
                 items: items
-            ) == [embeddingItem.id, tokenizerItem.id]
+            ) == Set(items.map(\.id))
         )
         #expect(
             manager.deletionPlan(
                 selection: [tokenizerItem.id],
                 items: items
-            ).ids == [embeddingItem.id, tokenizerItem.id]
+            ).ids == Set(items.map(\.id))
         )
         #expect(
             manager.deletionSelection(
