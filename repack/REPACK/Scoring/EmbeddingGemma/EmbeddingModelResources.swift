@@ -1,14 +1,24 @@
 import Foundation
 
-/// Resolves the model and tokenizer as one installable embedding resource.
+/// Resolves the token model, tokenizer, and calibration corpora as one installable embedding resource.
 nonisolated struct EmbeddingModelResources: Equatable, Sendable {
     static let modelFilename =
-        "embeddinggemma-300M_seq256_mixed-precision.tflite"
+        "embeddinggemma-300m-bertscore-layer16-seq256-f32.tflite"
     static let tokenizerFilename = "sentencepiece.model"
     static let displayName = String(localized: "Embedding Gemma 300M")
 
     let modelURL: URL
     let tokenizerURL: URL
+
+    func calibrationURL(for calibration: IDFCalibration) -> URL {
+        modelURL.deletingLastPathComponent().appending(path: calibration.filename)
+    }
+
+    private var hasCalibrations: Bool {
+        IDFCalibration.allCases.allSatisfy {
+            FileManager.default.fileExists(atPath: calibrationURL(for: $0).path)
+        }
+    }
 
     static func bundled(in bundle: Bundle = .main) -> EmbeddingModelResources? {
         guard let modelURL = bundle.url(
@@ -24,10 +34,11 @@ nonisolated struct EmbeddingModelResources: Equatable, Sendable {
             return nil
         }
 
-        return EmbeddingModelResources(
+        let resources = EmbeddingModelResources(
             modelURL: modelURL,
             tokenizerURL: tokenizerURL
         )
+        return resources.hasCalibrations ? resources : nil
     }
 
     static func available(
@@ -51,9 +62,10 @@ nonisolated struct EmbeddingModelResources: Equatable, Sendable {
               fileManager.fileExists(atPath: tokenizerURL.path) else {
             return nil
         }
-        return EmbeddingModelResources(
+        let resources = EmbeddingModelResources(
             modelURL: modelURL,
             tokenizerURL: tokenizerURL
         )
+        return resources.hasCalibrations ? resources : nil
     }
 }

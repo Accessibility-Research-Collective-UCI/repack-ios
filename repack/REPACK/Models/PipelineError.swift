@@ -34,7 +34,7 @@ nonisolated enum PipelineError: Error, Equatable, LocalizedError, Sendable {
         case .missingEmbeddingModel:
             String(
                 localized:
-                    "Semantic Similarity requires the EmbeddingGemma model and tokenizer."
+                    "Semantic Similarity requires the BERTScore token model, tokenizer, and IDF calibrations."
             )
         case .noCachedResult:
             String(localized: "Generate a caption before changing its threshold.")

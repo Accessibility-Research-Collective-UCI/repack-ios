@@ -16,6 +16,7 @@ nonisolated final class LiteRTEmbeddingInterpreter: @unchecked Sendable {
     private let xnnpackDelegate: UnsafeMutableRawPointer
     private let api: LiteRTAPI
     private let embeddingDimension: Int
+    private let sequenceLength: Int
 
     init(
         modelURL: URL,
@@ -81,6 +82,7 @@ nonisolated final class LiteRTEmbeddingInterpreter: @unchecked Sendable {
         self.xnnpackDelegate = xnnpackDelegate
         self.api = api
         self.embeddingDimension = embeddingDimension
+        self.sequenceLength = sequenceLength
         ownsInterpreter = false
         ownsDelegate = false
     }
@@ -91,7 +93,8 @@ nonisolated final class LiteRTEmbeddingInterpreter: @unchecked Sendable {
     }
 
     func invoke(_ inputIDs: [Int32]) throws -> [Float] {
-        guard let input = api.inputTensor(pointer, 0) else {
+        guard inputIDs.count == sequenceLength,
+              let input = api.inputTensor(pointer, 0) else {
             throw SemanticScoringError.runtimeFailure
         }
         let inputStatus = inputIDs.withUnsafeBytes {
@@ -103,11 +106,11 @@ nonisolated final class LiteRTEmbeddingInterpreter: @unchecked Sendable {
             throw SemanticScoringError.runtimeFailure
         }
 
-        let expectedBytes = embeddingDimension * MemoryLayout<Float>.stride
+        let expectedBytes = sequenceLength * embeddingDimension * MemoryLayout<Float>.stride
         guard api.tensorByteSize(output) == expectedBytes else {
             throw SemanticScoringError.invalidEmbeddingDimension
         }
-        var values = [Float](repeating: 0, count: embeddingDimension)
+        var values = [Float](repeating: 0, count: sequenceLength * embeddingDimension)
         let outputStatus = values.withUnsafeMutableBytes {
             api.tensorCopyToBuffer(output, $0.baseAddress, $0.count)
         }
@@ -139,9 +142,9 @@ nonisolated final class LiteRTEmbeddingInterpreter: @unchecked Sendable {
         }
         guard let output = api.outputTensor(interpreter, 0),
               api.tensorType(output) == liteRTFloat32,
-              tensorShape(output, api: api).last == embeddingDimension else {
+              tensorShape(output, api: api) == [1, sequenceLength, embeddingDimension] else {
             throw SemanticScoringError.invalidModelSignature(
-                "output is not Float32[..., \(embeddingDimension)]"
+                "output is not Float32[1, \(sequenceLength), \(embeddingDimension)]"
             )
         }
     }
