@@ -20,7 +20,7 @@ final class BenchmarkViewModel {
     var textModel: BenchmarkCaptionModel = .gemma4E2B
     var sampleCount = REPACKBenchmarkConfiguration.default.sampleCount
     var scoringMetric = REPACKBenchmarkConfiguration.default.scoringMetric
-    var promptType: BenchmarkPromptType = .describe
+    var promptType: BenchmarkPromptType = .product
     var customPrompt = ""
 
     private(set) var phase = Phase.setup
@@ -115,12 +115,20 @@ final class BenchmarkViewModel {
             )
         }
 
-        if algorithm == .repack,
-           scoringMetric == .semanticSimilarity,
-           EmbeddingModelResources.available() == nil {
-            messages.append(
-                String(localized: "Install Embedding Gemma for semantic similarity.")
-            )
+        if algorithm == .repack, scoringMetric == .semanticSimilarity {
+            if EmbeddingModelResources.available() == nil {
+                messages.append(
+                    String(localized: "Install Embedding Gemma for semantic similarity.")
+                )
+            }
+            if let vision = inventory.resolve(visionModel),
+               let text = inventory.resolve(textModel) {
+                do {
+                    _ = try IDFCalibration.resolve(visionModel: vision.url, textModel: text.url)
+                } catch {
+                    messages.append(error.localizedDescription)
+                }
+            }
         }
 
         if resolvedPrompt.isEmpty {

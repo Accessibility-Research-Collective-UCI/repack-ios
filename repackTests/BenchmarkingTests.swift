@@ -1,4 +1,5 @@
 #if BENCHMARKING
+import LiteRTLM
 import Foundation
 import Testing
 @testable import repack
@@ -11,14 +12,60 @@ struct BenchmarkingTests {
         var configuration = REPACKBenchmarkConfiguration.default
         #expect(
             configuration.similarityThreshold
-                == ScoringMetric.bleu.threshold.defaultValue
-        )
-
-        configuration.scoringMetric = .semanticSimilarity
-        #expect(
-            configuration.similarityThreshold
                 == ScoringMetric.semanticSimilarity.threshold.defaultValue
         )
+
+        configuration.scoringMetric = .bleu
+        #expect(
+            configuration.similarityThreshold
+                == ScoringMetric.bleu.threshold.defaultValue
+        )
+    }
+
+    @Test("Exported policies match LiteRT configuration independently for each engine")
+    func engineConfiguration() throws {
+        let vision = InferenceEngineSettings(backend: .gpu, visionBackend: .gpu, mtpEnabled: false)
+        let text = InferenceEngineSettings.text
+        let run = resolved(request(cooldownSeconds: 7), visionSettings: vision, textSettings: text)
+        for (policy, exported) in [(vision, run.exportedSettings.visionEngine), (text, run.exportedSettings.textEngine)] {
+            let configuration = try policy.configuration(modelURL: URL(filePath: "/tmp/model.litertlm"))
+            #expect(configuration.backend.rawValue == exported.backend)
+            #expect(configuration.visionBackend?.rawValue == exported.visionBackend)
+            #expect((configuration.speculativeDecodingConfig?.mode == .on) == exported.mtpEnabled)
+        }
+        let data = try JSONEncoder().encode(run.exportedSettings)
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let visionJSON = try #require(json["visionEngine"] as? [String: Any])
+        let textJSON = try #require(json["textEngine"] as? [String: Any])
+        #expect(visionJSON["mtpEnabled"] as? Bool == false)
+        #expect(textJSON["mtpEnabled"] as? Bool == true)
+        #expect(json["cooldownSeconds"] as? Int == 7)
+    }
+
+    @Test("Embedding diagnostics are separate from elapsed totals and optional in JSON")
+    func embeddingTimingExport() throws {
+        let result = CaptionResult(
+            captions: [], atomizedCaptions: [], scoredAtomics: [], retainedAtomics: [],
+            caption: "", threshold: 0.5, scoringMetric: .semanticSimilarity,
+            timings: [StageTiming(stage: .atomizing, duration: .seconds(3))],
+            embeddingDuration: .seconds(2)
+        )
+        let semantic = BenchmarkImageTiming(file: "semantic.jpg", result: result, elapsed: .seconds(5))
+        #expect(semantic.stages == ["atomization": 3])
+        var noEmbedding = result
+        noEmbedding.embeddingDuration = nil
+        let plain = BenchmarkImageTiming(file: "plain.jpg", result: noEmbedding, elapsed: .seconds(3))
+        let results = BenchmarkResults(timing: [semantic, plain])
+        #expect(results.totalTime == 8)
+        #expect(results.averageTime == 4)
+        let data = try JSONEncoder().encode(results)
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let timing = try #require(json["timing"] as? [[String: Any]])
+        let embedding = try #require(timing[0]["embedding"] as? [String: Any])
+        #expect(embedding["totalTime"] as? Double == 2)
+        #expect(timing[0]["totalTime"] as? Double == 5)
+        #expect(timing[1]["embedding"] == nil)
+        #expect(try JSONDecoder().decode(BenchmarkResults.self, from: data) == results)
     }
 
     @Test("Engine choices remain selectable before model discovery")
@@ -27,6 +74,10 @@ struct BenchmarkingTests {
             localModels: [],
             devicePolicy: DevicePolicy(modelIdentifier: "iPhone18,1")
         )
+
+        #expect(model.scoringMetric == .semanticSimilarity)
+        #expect(model.promptType == .product)
+        model.scoringMetric = .bleu
 
         model.visionModel = .gemma4E4B
         model.textModel = .gemma4E2B
@@ -54,6 +105,32 @@ struct BenchmarkingTests {
                 $0.localizedStandardContains("Embedding Gemma")
             }
         )
+    }
+
+    @Test("Semantic preflight rejects unsupported calibration without restricting other algorithms",
+          arguments: BenchmarkCaptionModel.allCases, BenchmarkCaptionModel.allCases)
+    func semanticCalibrationPreflight(vision: BenchmarkCaptionModel, text: BenchmarkCaptionModel) {
+        let model = BenchmarkViewModel(
+            localModels: BenchmarkCaptionModel.allCases.map {
+                LocalModel(url: URL(filePath: "/tmp/" + $0.downloadableModel.fileName), isBundled: false)
+            },
+            devicePolicy: DevicePolicy(modelIdentifier: "iPhone18,1")
+        )
+        model.visionModel = vision
+        model.textModel = text
+        let calibrationError = SemanticScoringError.unsupportedCalibration.localizedDescription
+        #expect(model.preflightMessages.contains(calibrationError) == (text == .gemma4E4B))
+        if text == .gemma4E4B {
+            #expect(!model.canStart)
+        }
+
+        model.scoringMetric = .bleu
+        #expect(model.canStart)
+        for algorithm in [BenchmarkAlgorithm.capmas, .taco] {
+            model.algorithm = algorithm
+            model.scoringMetric = .semanticSimilarity
+            #expect(model.canStart)
+        }
     }
 
     @Test("Runner sorts images and excludes cooldown from timing aggregates")
@@ -100,6 +177,10 @@ struct BenchmarkingTests {
 
         #expect(factory.creationCount == 3)
         #expect(factory.previousWasReleased == [true, true, true])
+        #expect(factory.resolutionCount == 1)
+        #expect(factory.settings.allSatisfy { $0 == output.benchmarkSettings })
+        #expect(output.benchmarkSettings.visionEngine.mtpEnabled == false)
+        #expect(output.benchmarkSettings.textEngine.mtpEnabled == true)
         #expect(factory.previous == nil)
         #expect(output.status == .completed)
         #expect(output.completedImageCount == 3)
@@ -107,9 +188,10 @@ struct BenchmarkingTests {
         #expect(output.runEndTime.timeIntervalSince(output.runStartTime) == 30)
     }
 
-    @Test("All benchmarks preserve completed images on reload failure", arguments: BenchmarkAlgorithm.allCases)
-    func reloadFailure(algorithm: BenchmarkAlgorithm) async {
-        let factory = RecreatingExecutorFactory(failingCreation: 2)
+    @Test("All benchmarks preserve configuration and completed images on setup failure",
+          arguments: BenchmarkAlgorithm.allCases, [1, 2])
+    func reloadFailure(algorithm: BenchmarkAlgorithm, failingCreation: Int) async {
+        let factory = RecreatingExecutorFactory(failingCreation: failingCreation)
         let dateProvider = FakeDateProvider()
         let runner = BenchmarkRunner(
             executorFactory: factory,
@@ -125,11 +207,15 @@ struct BenchmarkingTests {
         }
         let output = await runner.run(request: runRequest) { _ in }
 
-        #expect(factory.previousWasReleased == [true, true])
+        #expect(factory.previousWasReleased == Array(repeating: true, count: failingCreation))
+        #expect(factory.resolutionCount == 1)
+        #expect(factory.settings.allSatisfy { $0 == output.benchmarkSettings })
+        #expect(output.benchmarkSettings.visionEngine.mtpEnabled == false)
+        #expect(output.benchmarkSettings.textEngine.mtpEnabled == true)
         #expect(factory.previous == nil)
         #expect(output.status == .failed)
-        #expect(output.completedImageCount == 1)
-        #expect(output.failure?.file == "b.jpg")
+        #expect(output.completedImageCount == failingCreation - 1)
+        #expect(output.failure?.file == (failingCreation == 1 ? nil : "b.jpg"))
     }
 
     @Test("Runner stops on the first failed image and keeps partial output")
@@ -174,7 +260,7 @@ struct BenchmarkingTests {
             algorithm: .repack,
             imageCount: 25,
             completedImageCount: 0,
-            benchmarkSettings: request.exportedSettings,
+            benchmarkSettings: resolved(request).exportedSettings,
             results: BenchmarkResults(timing: []),
             metadata: [],
             status: .completed,
@@ -184,7 +270,16 @@ struct BenchmarkingTests {
         let json = output.formattedJSON()
         #expect(json.contains("\"runStartTime\" : \"1970-01-01T00:00:00Z\""))
         #expect(json.contains("\"visionBackend\" : \"gpu\""))
-        #expect(json.contains("\"mtpEnabled\" : true"))
+        let object = try #require(JSONSerialization.jsonObject(with: output.formattedJSONData()) as? [String: Any])
+        let settings = try #require(object["benchmarkSettings"] as? [String: Any])
+        let vision = try #require(settings["visionEngine"] as? [String: Any])
+        let text = try #require(settings["textEngine"] as? [String: Any])
+        #expect(vision["mtpEnabled"] as? Bool == true)
+        #expect(text["mtpEnabled"] as? Bool == true)
+        #expect(vision["backend"] as? String == "gpu")
+        #expect(vision["visionBackend"] as? String == "gpu")
+        #expect(text["backend"] as? String == "gpu")
+        #expect(text["visionBackend"] == nil)
         #expect(json.contains("\"similarityThreshold\" : 0.5"))
         #expect(
             output.exportFilename
@@ -204,14 +299,15 @@ struct BenchmarkingTests {
                 choice: .gemma4E2B, url: URL(filePath: DownloadableModel.e2b.fileName)
             ),
             algorithmConfiguration: .repack(REPACKBenchmarkConfiguration(
-                sampleCount: 5, scoringMetric: .semanticSimilarity
+                sampleCount: 9, scoringMetric: .semanticSimilarity
             )),
             prompt: original.prompt,
             cooldownSeconds: 0
         )
-        let data = try JSONEncoder().encode(semantic.exportedSettings)
+        let data = try JSONEncoder().encode(resolved(semantic).exportedSettings)
         let json = String(decoding: data, as: UTF8.self)
-        #expect(json.contains("bertscore-f1-idf-layer16-v1"))
+        #expect(resolved(semantic).exportedSettings.numSamples == 9)
+        #expect(json.contains(SemanticCaptionScorer.implementation))
         #expect(json.contains(EmbeddingModelResources.modelFilename))
         #expect(json.contains(IDFCalibration.e4b.filename))
     }
@@ -282,7 +378,7 @@ struct BenchmarkingTests {
         ])
         for proposition in metadata.propositions {
             #expect(proposition.score == 0 || proposition.score == 1)
-            #expect(proposition.isTrue == (proposition.score > 0.5))
+            #expect(proposition.isTrue == (proposition.score > CapMASBenchmarkExecutor.verificationThreshold))
         }
     }
 
@@ -329,8 +425,8 @@ struct BenchmarkingTests {
         )
 
         let request = capmasRequest()
-        #expect(request.exportedSettings.numSamples == 1)
-        #expect(request.exportedSettings.algorithmSettings == .capmas)
+        #expect(resolved(request).exportedSettings.numSamples == 1)
+        #expect(resolved(request).exportedSettings.algorithmSettings == .capmas)
 
         let output = BenchmarkOutput(
             runStartTime: .distantPast,
@@ -343,7 +439,7 @@ struct BenchmarkingTests {
             algorithm: .capmas,
             imageCount: 25,
             completedImageCount: 0,
-            benchmarkSettings: request.exportedSettings,
+            benchmarkSettings: resolved(request).exportedSettings,
             results: BenchmarkResults(timing: []),
             metadata: [],
             status: .completed,
@@ -495,8 +591,8 @@ struct BenchmarkingTests {
     @Test("TACO exports its sample count and filename")
     func tacoExport() {
         let request = tacoRequest(sampleCount: 3)
-        #expect(request.exportedSettings.numSamples == 3)
-        #expect(request.exportedSettings.algorithmSettings == .taco)
+        #expect(resolved(request).exportedSettings.numSamples == 3)
+        #expect(resolved(request).exportedSettings.algorithmSettings == .taco)
 
         let output = BenchmarkOutput(
             runStartTime: .distantPast,
@@ -509,7 +605,7 @@ struct BenchmarkingTests {
             algorithm: .taco,
             imageCount: 25,
             completedImageCount: 0,
-            benchmarkSettings: request.exportedSettings,
+            benchmarkSettings: resolved(request).exportedSettings,
             results: BenchmarkResults(timing: []),
             metadata: [],
             status: .completed,
@@ -536,7 +632,7 @@ struct BenchmarkingTests {
             algorithm: .repack,
             visionModel: vision,
             textModel: text,
-            algorithmConfiguration: .repack(.default),
+            algorithmConfiguration: .repack(REPACKBenchmarkConfiguration(sampleCount: 5, scoringMetric: .bleu)),
             prompt: BenchmarkPromptSettings(
                 type: .describe,
                 text: Prompts.describePrompt
@@ -582,8 +678,26 @@ struct BenchmarkingTests {
     }
 }
 
+private func resolved(
+    _ request: BenchmarkRunRequest,
+    visionSettings: InferenceEngineSettings = .vision,
+    textSettings: InferenceEngineSettings = .text
+) -> ResolvedBenchmarkRun {
+    ResolvedBenchmarkRun(
+        request: request,
+        visionSettings: visionSettings,
+        textSettings: textSettings,
+        embeddingResources: EmbeddingModelResources(
+            modelURL: URL(filePath: "/tmp/" + EmbeddingModelResources.modelFilename),
+            tokenizerURL: URL(filePath: "/tmp/" + EmbeddingModelResources.tokenizerFilename)
+        )
+    )
+}
+
 @MainActor
 private final class CapMASFakeEngineFactory: EngineFactory {
+    let visionSettings = InferenceEngineSettings.vision
+    let textSettings = InferenceEngineSettings.text
     let visionEngine: CapMASFakeInferenceEngine
     let textEngine: CapMASFakeInferenceEngine
 
@@ -663,6 +777,8 @@ private enum CapMASFakeError: Error {
 private final class RecreatingExecutorFactory: BenchmarkAlgorithmExecutorBuilding {
     weak var previous: FakeBenchmarkExecutor?
     var creationCount = 0
+    var resolutionCount = 0
+    var settings: [BenchmarkSettings] = []
     var previousWasReleased: [Bool] = []
     let failingCreation: Int?
 
@@ -670,8 +786,16 @@ private final class RecreatingExecutorFactory: BenchmarkAlgorithmExecutorBuildin
         self.failingCreation = failingCreation
     }
 
-    func makeExecutor(for _: BenchmarkRunRequest) async throws
+    func resolve(_ request: BenchmarkRunRequest) -> ResolvedBenchmarkRun {
+        resolutionCount += 1
+        return resolved(request, visionSettings: InferenceEngineSettings(
+            backend: .gpu, visionBackend: .gpu, mtpEnabled: false
+        ))
+    }
+
+    func makeExecutor(for run: ResolvedBenchmarkRun) async throws
         -> any BenchmarkAlgorithmExecuting {
+        settings.append(run.exportedSettings)
         previousWasReleased.append(previous == nil)
         creationCount += 1
         if creationCount == failingCreation {
@@ -691,7 +815,11 @@ private final class FakeExecutorFactory: BenchmarkAlgorithmExecutorBuilding {
         self.executor = executor
     }
 
-    func makeExecutor(for _: BenchmarkRunRequest) async throws
+    func resolve(_ request: BenchmarkRunRequest) -> ResolvedBenchmarkRun {
+        resolved(request)
+    }
+
+    func makeExecutor(for run: ResolvedBenchmarkRun) async throws
         -> any BenchmarkAlgorithmExecuting {
         executor
     }

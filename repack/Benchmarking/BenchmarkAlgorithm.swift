@@ -60,7 +60,7 @@ nonisolated struct REPACKBenchmarkConfiguration: Equatable, Sendable {
 
     static let `default` = REPACKBenchmarkConfiguration(
         sampleCount: 5,
-        scoringMetric: .bleu
+        scoringMetric: .semanticSimilarity
     )
 }
 #endif

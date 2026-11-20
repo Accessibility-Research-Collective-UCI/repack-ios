@@ -3,6 +3,10 @@ import Foundation
 
 @MainActor
 final class CapMASBenchmarkExecutor: BenchmarkAlgorithmExecuting {
+    nonisolated static let sampleCount = 1
+    nonisolated static let verificationThreshold = 0.5
+    nonisolated static let classificationMethod = "randomBinary"
+
     private let prompt: String
     private let visionEngine: any InferenceEngine
     private let textEngine: any InferenceEngine
@@ -65,7 +69,7 @@ final class CapMASBenchmarkExecutor: BenchmarkAlgorithmExecuting {
                 CapMASPropositionMetadata(
                     statement: proposition,
                     score: score,
-                    isTrue: score > 0.5
+                    isTrue: score > Self.verificationThreshold
                 )
             )
             progress(

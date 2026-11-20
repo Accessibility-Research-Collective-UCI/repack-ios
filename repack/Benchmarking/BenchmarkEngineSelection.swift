@@ -1,4 +1,5 @@
 #if BENCHMARKING
+import LiteRTLM
 import Foundation
 
 nonisolated enum BenchmarkCaptionModel: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -17,32 +18,17 @@ nonisolated enum BenchmarkCaptionModel: String, Codable, CaseIterable, Identifia
     var title: String { rawValue }
 }
 
-nonisolated enum BenchmarkBackend: String, Codable, Sendable {
-    case gpu
-}
-
 nonisolated struct BenchmarkEngineSettings: Codable, Equatable, Sendable {
     let model: BenchmarkCaptionModel
-    let backend: BenchmarkBackend
-    let visionBackend: BenchmarkBackend?
+    let backend: String
+    let visionBackend: String?
     let mtpEnabled: Bool
 
-    static func vision(model: BenchmarkCaptionModel) -> BenchmarkEngineSettings {
-        BenchmarkEngineSettings(
-            model: model,
-            backend: .gpu,
-            visionBackend: .gpu,
-            mtpEnabled: false
-        )
-    }
-
-    static func text(model: BenchmarkCaptionModel) -> BenchmarkEngineSettings {
-        BenchmarkEngineSettings(
-            model: model,
-            backend: .gpu,
-            visionBackend: nil,
-            mtpEnabled: true
-        )
+    init(model: BenchmarkCaptionModel, settings: InferenceEngineSettings) {
+        self.model = model
+        backend = settings.backend.rawValue
+        visionBackend = settings.visionBackend?.rawValue
+        mtpEnabled = settings.mtpEnabled
     }
 }
 

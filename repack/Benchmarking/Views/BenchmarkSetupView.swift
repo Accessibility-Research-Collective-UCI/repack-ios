@@ -1,4 +1,5 @@
 #if BENCHMARKING
+import LiteRTLM
 import SwiftUI
 
 struct BenchmarkSetupView: View {
@@ -73,9 +74,6 @@ struct BenchmarkSetupView: View {
                 }
             }
             .pickerStyle(.navigationLink)
-            .accessibilityHint(
-                "Uses GPU for language and vision inference. Multi-token prediction is disabled."
-            )
 
             LabeledContent(
                 "Vision model status",
@@ -90,9 +88,6 @@ struct BenchmarkSetupView: View {
                 }
             }
             .pickerStyle(.navigationLink)
-            .accessibilityHint(
-                "Uses GPU for language inference. Vision is disabled and multi-token prediction is enabled."
-            )
 
             LabeledContent(
                 "Text model status",
@@ -105,10 +100,20 @@ struct BenchmarkSetupView: View {
         } header: {
             Text("Engine Settings")
         } footer: {
-            Text(
-                "Vision uses the GPU backend and GPU vision without MTP. "
-                    + "Text uses the GPU backend with MTP and no vision backend."
-            )
+            let vision = InferenceEngineSettings.vision
+            let text = InferenceEngineSettings.text
+            VStack(alignment: .leading) {
+                Text(.benchmarkVisionEngineSummary(
+                    vision.backend.rawValue,
+                    vision.visionBackend?.rawValue ?? String(localized: .benchmarkBackendNone),
+                    String(localized: vision.mtpEnabled ? .benchmarkMTPEnabled : .benchmarkMTPDisabled)
+                ))
+                Text(.benchmarkTextEngineSummary(
+                    text.backend.rawValue,
+                    text.visionBackend?.rawValue ?? String(localized: .benchmarkBackendNone),
+                    String(localized: text.mtpEnabled ? .benchmarkMTPEnabled : .benchmarkMTPDisabled)
+                ))
+            }
         }
     }
 

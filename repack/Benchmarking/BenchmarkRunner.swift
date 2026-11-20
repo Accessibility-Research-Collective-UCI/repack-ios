@@ -42,6 +42,7 @@ final class BenchmarkRunner {
         request: BenchmarkRunRequest,
         event: @escaping EventHandler
     ) async -> BenchmarkOutput {
+        let resolvedRun = executorFactory.resolve(request)
         let start = dateProvider.now
         let deviceInformation = deviceInformationProvider.information()
         var timings: [BenchmarkImageTiming] = []
@@ -57,7 +58,7 @@ final class BenchmarkRunner {
             let images = try imageProvider.images().sorted {
                 $0.lastPathComponent < $1.lastPathComponent
             }
-            executor = try await executorFactory.makeExecutor(for: request)
+            executor = try await executorFactory.makeExecutor(for: resolvedRun)
 
             for (offset, image) in images.enumerated() {
                 try Task.checkCancellation()
@@ -95,7 +96,7 @@ final class BenchmarkRunner {
                     )
                     try Task.checkCancellation()
                     currentFile = images[offset + 1].lastPathComponent
-                    executor = try await executorFactory.makeExecutor(for: request)
+                    executor = try await executorFactory.makeExecutor(for: resolvedRun)
                     try await cooling
                 }
             }
@@ -129,7 +130,7 @@ final class BenchmarkRunner {
             algorithm: request.algorithm,
             imageCount: imageProvider.expectedImageCount,
             completedImageCount: timings.count,
-            benchmarkSettings: request.exportedSettings,
+            benchmarkSettings: resolvedRun.exportedSettings,
             results: BenchmarkResults(timing: timings),
             metadata: metadata,
             status: status,

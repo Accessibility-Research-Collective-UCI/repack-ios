@@ -145,7 +145,8 @@ struct REPACKTests {
         let fixture = Fixture()
         fixture.factory.textState.atomizationDelay = .milliseconds(100)
         let embeddingProvider = FakeTextEmbeddingProvider(
-            totalCaptionCount: 3
+            totalCaptionCount: 3,
+            delay: .milliseconds(150)
         ) {
             fixture.factory.textState.atomizedCaptions.count
         }
@@ -165,6 +166,10 @@ struct REPACKTests {
         )
 
         #expect(result.scoringMetric == .semanticSimilarity)
+        #expect(result.embeddingDuration == .seconds(6))
+        #expect(result.timings.map(\.stage) == [.sampling, .atomizing, .scoring, .repackaging])
+        let regenerated = try await repack.regenerateCaption(threshold: 0.9)
+        #expect(regenerated.embeddingDuration == result.embeddingDuration)
         #expect(result.scoredAtomics.map(\.averageScore) == [1, 0])
         #expect(result.retainedAtomics == ["red can"])
         let requests = await embeddingProvider.requests
@@ -176,6 +181,33 @@ struct REPACKTests {
         let startedBeforeCompletion =
             await embeddingProvider.startedBeforeAllAtomization
         #expect(startedBeforeCompletion)
+        #expect(await embeddingProvider.finishedAfterAllAtomization)
+    }
+
+    @Test("Embedding failures and cancellation clear preparation state", arguments: [false, true])
+    func embeddingFailureCleanup(cancelled: Bool) async throws {
+        let fixture = Fixture()
+        let provider = FakeTextEmbeddingProvider(
+            failure: cancelled ? CancellationError() : SemanticScoringError.statementVectorCountMismatch
+        )
+        let pipeline = try await REPACKPipeline(
+            samplingModelURL: fixture.modelURL, processingModelURL: fixture.modelURL,
+            engineFactory: fixture.factory, embeddingProvider: provider
+        )
+        do {
+            _ = try await pipeline.process(
+                image: fixture.imageURL, samplePrompt: .describe,
+                sampleCount: 2, threshold: 0.5, scoringMetric: .semanticSimilarity
+            )
+            Issue.record("Embedding failure did not propagate")
+        } catch {
+            if cancelled {
+                #expect(error is CancellationError)
+            } else {
+                #expect(error is SemanticScoringError)
+            }
+        }
+        #expect(await provider.cacheClearCount == 2)
     }
 
     @Test("Semantic scoring requires an embedding provider")
@@ -197,23 +229,27 @@ struct REPACKTests {
         }
     }
 
-    @Test("An unparseable reference swaps with the first parseable sample")
-    func referencePromotion() async throws {
+    @Test("An unparseable reference swaps with the first parseable sample",
+          arguments: [ScoringMetric.bleu, .semanticSimilarity])
+    func referencePromotion(metric: ScoringMetric) async throws {
         let fixture = Fixture()
         fixture.factory.textState.atomicResponses["red can with white logo"] = []
         fixture.factory.textState.atomizationStatuses["red can with white logo"] = .unparseable
         fixture.factory.textState.atomicResponses["red can"] = []
         fixture.factory.textState.atomizationStatuses["red can"] = .unparseable
         let repack = try await REPACKPipeline(
-            modelURL: fixture.modelURL,
-            engineFactory: fixture.factory
+            samplingModelURL: fixture.modelURL,
+            processingModelURL: fixture.modelURL,
+            engineFactory: fixture.factory,
+            embeddingProvider: FakeTextEmbeddingProvider()
         )
 
         let result = try await repack.process(
             image: fixture.imageURL,
             samplePrompt: .describe,
             sampleCount: 2,
-            threshold: 0.5
+            threshold: 0.5,
+            scoringMetric: metric
         )
 
         #expect(
@@ -235,6 +271,8 @@ struct REPACKTests {
         #expect(result.caption.contains("could not verify enough details"))
 
         let regenerated = try await repack.regenerateCaption(threshold: 0.9)
+        #expect(result.embeddingDuration == (metric == .semanticSimilarity ? .seconds(6) : nil))
+        #expect(regenerated.embeddingDuration == result.embeddingDuration)
         #expect(regenerated.captions == result.captions)
         #expect(regenerated.atomizedCaptions == result.atomizedCaptions)
     }
@@ -1138,6 +1176,8 @@ private struct Fixture {
 
 @MainActor
 private final class FakeEngineFactory: EngineFactory {
+    let visionSettings = InferenceEngineSettings.vision
+    let textSettings = InferenceEngineSettings.text
     enum Event: Equatable {
         case validate
         case makeVision
@@ -1204,6 +1244,8 @@ private final class FakeEngineState {
 
 private actor FakeTextEmbeddingProvider: TextEmbeddingProviding {
     private let totalCaptionCount: Int?
+    private let delay: Duration?
+    private let failure: (any Error)?
     private let atomizedCount: (@MainActor @Sendable () -> Int)?
     private(set) var cacheClearCount = 0
 
@@ -1211,22 +1253,33 @@ private actor FakeTextEmbeddingProvider: TextEmbeddingProviding {
 
     private(set) var requests: [[String]] = []
     private(set) var startedBeforeAllAtomization = false
+    private(set) var finishedAfterAllAtomization = false
 
     init(
         totalCaptionCount: Int? = nil,
+        delay: Duration? = nil,
+        failure: (any Error)? = nil,
         atomizedCount: (@MainActor @Sendable () -> Int)? = nil
     ) {
         self.totalCaptionCount = totalCaptionCount
+        self.delay = delay
+        self.failure = failure
         self.atomizedCount = atomizedCount
     }
 
-    func embeddings(for statements: [String]) async throws -> [TokenEmbedding] {
+    func embeddings(for statements: [String]) async throws -> MeasuredEmbeddings {
         requests.append(statements)
         if let totalCaptionCount, let atomizedCount,
            await atomizedCount() < totalCaptionCount {
             startedBeforeAllAtomization = true
         }
-        return try statements.map { statement in
+        if let delay { try await Task.sleep(for: delay) }
+        if let failure { throw failure }
+        if let totalCaptionCount, let atomizedCount,
+           await atomizedCount() == totalCaptionCount {
+            finishedAfterAllAtomization = true
+        }
+        let embeddings = try statements.map { statement in
             let vector: [Float] = switch statement {
             case "red can":
                 [1, 0]
@@ -1239,6 +1292,7 @@ private actor FakeTextEmbeddingProvider: TextEmbeddingProviding {
             }
             return try TokenEmbedding(tokenIDs: [10], vectors: vector, dimension: 2, weights: [1])
         }
+        return MeasuredEmbeddings(embeddings: embeddings, duration: .seconds(2))
     }
 }
 

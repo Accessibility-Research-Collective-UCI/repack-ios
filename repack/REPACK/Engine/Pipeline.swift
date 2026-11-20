@@ -206,7 +206,10 @@ extension REPACKPipeline {
             caption: repackedCaption,
             threshold: threshold,
             scoringMetric: scoringMetric,
-            timings: timings
+            timings: timings,
+            embeddingDuration: scoringMetric == .semanticSimilarity
+                ? atomizationBatch.preparedCaptions.reduce(.zero) { $0 + ($1.embeddingDuration ?? .zero) }
+                : nil
         )
         cachedResult = result
         MemoryDiagnostics.log("Process complete")

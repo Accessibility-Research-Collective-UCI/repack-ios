@@ -21,7 +21,7 @@ nonisolated struct BERTScoreReferenceTests {
             #expect(calibration.filename == expected.filename)
             #expect(try checksum(resources.calibrationURL(for: calibration)) == expected.sha256)
             let service = EmbeddingGemmaService(resources: resources, calibration: calibration)
-            let embeddings = try await service.embeddings(for: fixture.texts)
+            let embeddings = try await service.embeddings(for: fixture.texts).embeddings
             #expect(expected.scores.count == fixture.pairs.count)
             #expect(expected.weights.count == embeddings.count)
             for index in embeddings.indices {
