@@ -59,23 +59,25 @@ final class AppModel {
             invalidateCompletedResult()
         }
     }
-    var scoringMetric: ScoringMetric = .bleu {
+    var scoringMetric: ScoringMetric = .semanticSimilarity {
         didSet {
             guard scoringMetric != oldValue else { return }
             threshold = scoringMetric.threshold.defaultValue
             invalidateCompletedResult()
         }
     }
-    var threshold = 0.5
+    var threshold = 0.75
+    var calibration: ConformalCalibration?
     var progress: PipelineProgress?
     var result: CaptionResult?
-    var isRegenerating = false
     let outputRenderings = OutputRenderingsController()
     var errorMessage: String?
     var hasPendingCaptionRun = false
     let modelManager: ModelLibrary
     let imageStore: ImageStore
     let engineFactory: any EngineFactory
+    let embeddingProvider: (any TextEmbeddingProviding)?
+    let loadCalibration: @Sendable (DownloadableModel) async throws -> ConformalCalibration
     let devicePolicy: DevicePolicy
     let captionExecutionCoordinator: any CaptionExecutionCoordinating
     let modelDownloadExecutionCoordinator: any ModelDownloadExecutionCoordinating
@@ -84,11 +86,9 @@ final class AppModel {
     let clock = ContinuousClock()
     var pipeline: REPACKPipeline?
     var processTask: Task<Void, Never>?
-    var thresholdTask: Task<Void, Never>?
     var ownedImageURLs: Set<URL> = []
     var processStartedAt: ContinuousClock.Instant?
     var completedElapsed: Duration?
-    var thresholdRequestID = UUID()
     var currentRunID: UUID?
     var executionMode: CaptionExecutionMode?
     var isLoadingPipeline = false
@@ -98,6 +98,10 @@ final class AppModel {
         imageStore: ImageStore = .shared,
         engineFactory: (any EngineFactory)? = nil,
         devicePolicy: DevicePolicy = .current,
+        embeddingProvider: (any TextEmbeddingProviding)? = nil,
+        loadCalibration: @escaping @Sendable (DownloadableModel) async throws -> ConformalCalibration = {
+            try await ConformalCalibration.load(model: $0)
+        },
         captionExecutionCoordinator: any CaptionExecutionCoordinating =
             CaptionExecutionCoordinator.shared,
         modelDownloadExecutionCoordinator: any ModelDownloadExecutionCoordinating =
@@ -111,6 +115,8 @@ final class AppModel {
         self.imageStore = imageStore
         self.engineFactory = engineFactory ?? LiteRTEngineFactory.shared
         self.devicePolicy = devicePolicy
+        self.embeddingProvider = embeddingProvider
+        self.loadCalibration = loadCalibration
         self.captionExecutionCoordinator = captionExecutionCoordinator
         self.modelDownloadExecutionCoordinator = modelDownloadExecutionCoordinator
         self.modelDownloadNotifier = modelDownloadNotifier
@@ -168,18 +174,6 @@ final class AppModel {
 
     func isModelInstalled(_ model: DownloadableModel) -> Bool {
         modelManager.isInstalled(model)
-    }
-
-    var defaultScoringMetric: ScoringMetric {
-        Self.defaultScoringMetric(
-            embeddingModelInstalled: isModelInstalled(.embeddingGemma)
-        )
-    }
-
-    nonisolated static func defaultScoringMetric(
-        embeddingModelInstalled: Bool
-    ) -> ScoringMetric {
-        embeddingModelInstalled ? .semanticSimilarity : .bleu
     }
 
     var isBusy: Bool {
@@ -241,11 +235,11 @@ final class AppModel {
         isEngineReady
             && selectedImageURL != nil
             && !samplePrompt.resolvedText.isEmpty
-            && (scoringMetric == .bleu || semanticScoringAvailable)
+            && semanticScoringAvailable
     }
 
     var semanticScoringAvailable: Bool {
-        EmbeddingModelResources.available() != nil
+        embeddingProvider != nil || EmbeddingModelResources.available() != nil
     }
 
     var scoringModelName: String {

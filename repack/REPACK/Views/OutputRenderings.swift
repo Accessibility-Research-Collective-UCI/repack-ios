@@ -1,233 +1,121 @@
+import Foundation
 import SwiftUI
 
 struct OutputRenderings: View {
     @Bindable var model: AppModel
     let result: CaptionResult
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
+        let controller = model.outputRenderings
         VStack(alignment: .leading, spacing: 24) {
-            Picker(
-                "Output rendering",
-                selection: Binding(
-                    get: { model.outputRenderings.selection },
-                    set: { model.selectOutputRendering($0) }
-                )
-            ) {
+            Picker("Output rendering", selection: Binding(
+                get: { controller.selection },
+                set: { model.selectOutputRendering($0) }
+            )) {
                 ForEach(OutputRenderingsController.Rendering.allCases) { rendering in
-                    Text(rendering.title).tag(rendering)
+                    Text(rendering.tabTitle)
+                        .accessibilityLabel(rendering.title)
+                        .tag(rendering)
                 }
             }
             .pickerStyle(.segmented)
 
-            rendering
-        }
-    }
-
-    @ViewBuilder
-    private var rendering: some View {
-        switch model.outputRenderings.selection {
-        case .repack:
-            RepackOutput(result: result, isRegenerating: model.isRegenerating)
-            thresholdControl
-        case .atomic:
-            AtomicListOutput(result: result, threshold: model.threshold)
-            thresholdControl
-        case .hedged:
-            HedgedOutput(
-                result: result,
-                hedgedCaption: model.outputRenderings.hedgedCaption,
-                isGenerating: model.outputRenderings.isGenerating,
-                errorMessage: model.outputRenderings.errorMessage,
-                retry: model.retryOutputRendering
-            )
-            thresholdControl
-        case .stratified:
-            StratifiedOutput(
-                result: result,
-                model: model.selectedCaptioningModel,
-                captions: model.outputRenderings.stratifiedCaptions,
-                isGenerating: model.outputRenderings.isGenerating,
-                errorMessage: model.outputRenderings.errorMessage,
-                retry: model.retryOutputRendering
-            )
-        }
-    }
-
-    private var thresholdControl: some View {
-        SimilarityThresholdControl(
-            metric: result.scoringMetric,
-            value: model.threshold,
-            onChange: model.updateThreshold
-        )
-    }
-}
-
-private struct RepackOutput: View {
-    let result: CaptionResult
-    let isRegenerating: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(result.caption)
-                .font(.title2)
-                .textSelection(.enabled)
-                .accessibilityLabel("Result: \(result.caption)")
-
-            if isRegenerating {
-                HStack {
-                    ProgressView()
-                    Text("Updating caption…")
-                        .foregroundStyle(.secondary)
-                }
-                .accessibilityElement(children: .combine)
+            if controller.selection != .repack {
+                Text(controller.selection.title)
+                    .font(.title)
+                    .bold()
             }
-        }
-        .padding()
-        .background(.quaternary, in: .rect(cornerRadius: 20))
-    }
-}
 
-private struct AtomicListOutput: View {
-    let result: CaptionResult
-    let threshold: Double
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            atomicSection("Included", atomics: included, emptyMessage: "No atomic statements are included at this threshold.")
-            atomicSection("Removed", atomics: removed, emptyMessage: "No atomic statements are removed at this threshold.")
-        }
-    }
-
-    private var included: [ScoredAtomic] {
-        result.scoredAtomics.filter { $0.averageScore >= threshold }
-    }
-
-    private var removed: [ScoredAtomic] {
-        result.scoredAtomics.filter { $0.averageScore < threshold }
-    }
-
-    @ViewBuilder
-    private func atomicSection(
-        _ title: LocalizedStringKey,
-        atomics: [ScoredAtomic],
-        emptyMessage: LocalizedStringKey
-    ) -> some View {
-        DetailSection(title) {
-            if atomics.isEmpty {
-                Text(emptyMessage)
-                    .foregroundStyle(.secondary)
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(atomics) { atomic in
-                        Text(atomic.statement)
-                            .textSelection(.enabled)
+            if controller.selection == .repack {
+                Text(.captionWithCertainty(controller.displayedCertainty))
+                    .font(.title)
+                    .bold()
+                Text(result.caption)
+                    .font(.title2)
+                    .textSelection(.enabled)
+                VStack(alignment: .leading) {
+                    Text(.requestedCertaintyValue(controller.requestedCertainty))
+                    Slider(value: Binding(
+                        get: { Double(controller.requestedCertainty) },
+                        set: { model.updateCertainty(Int($0)) }
+                    ), in: 0...100, step: 1) {
+                        Text(.certainty)
                     }
+                    .accessibilityValue(Text(.certaintyPercentValue(controller.requestedCertainty)))
                 }
-            }
-        }
-    }
-}
-
-private struct HedgedOutput: View {
-    let result: CaptionResult
-    let hedgedCaption: String?
-    let isGenerating: Bool
-    let errorMessage: String?
-    let retry: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(result.caption)
-                .font(.title2)
-                .textSelection(.enabled)
-
-            if isGenerating {
-                ProgressView("Generating hedged caption")
-            } else if let errorMessage {
-                ContentUnavailableView {
-                    Label("Hedged Caption Unavailable", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(errorMessage)
-                } actions: {
-                    Button("Retry", action: retry)
+                if controller.requestedCertainty != controller.displayedCertainty,
+                   controller.errors[.repack] == nil {
+                    ProgressView("Updating caption…")
                 }
-            } else if let hedgedCaption {
-                Text(hedgedCaption)
+            } else if let text = controller.captions[controller.selection] {
+                Text(Self.emphasizedText(
+                    text.isEmpty ? String(localized: .noStatementsAvailable) : text,
+                    rendering: controller.selection
+                ))
+                    .font(.title2)
                     .textSelection(.enabled)
-            } else {
-                Text("No additional uncertain details at this threshold.")
-                    .foregroundStyle(.secondary)
+            } else if controller.errors[controller.selection] == nil {
+                ProgressView(.preparingRepresentation)
+            }
+
+            if let error = controller.errors[controller.selection] {
+                Text(error).foregroundStyle(.secondary)
+                Button("Retry", action: model.retryOutputRendering)
             }
         }
-        .padding()
-        .background(.quaternary, in: .rect(cornerRadius: 20))
+        .task(id: "\(scenePhase)-\(controller.revision)") {
+            guard scenePhase == .active, let pipeline = model.pipeline,
+                  let calibration = model.calibration else { return }
+            await controller.prepare(result: result, pipeline: pipeline, calibration: calibration) {
+                model.result = $0
+                model.threshold = $0.threshold
+                model.announce(String(localized: "Caption updated."))
+            }
+        }
     }
-}
 
-private struct StratifiedOutput: View {
-    let result: CaptionResult
-    let model: DownloadableModel
-    let captions: [StratificationTier: String]
-    let isGenerating: Bool
-    let errorMessage: String?
-    let retry: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Based on our calibration of this model…")
-                .font(.headline)
-
-            if isGenerating {
-                ProgressView("Generating stratified captions")
-            } else if let errorMessage {
-                ContentUnavailableView {
-                    Label("Stratified Captions Unavailable", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(errorMessage)
-                } actions: {
-                    Button("Retry", action: retry)
-                }
-            } else {
-                ForEach(StratificationTier.allCases) { tier in
-                    tierSection(tier)
+    static func emphasizedText(
+        _ text: String,
+        rendering: OutputRenderingsController.Rendering
+    ) -> AttributedString {
+        let displayPrefixes = [
+            String(localized: .highConfidencePrefix),
+            String(localized: .mediumConfidencePrefix),
+            String(localized: .lowConfidencePrefix)
+        ]
+        let text = rendering == .stratified ? text.components(separatedBy: "\n").map { line in
+            for (prefix, displayPrefix) in zip(OutputRenderingsController.prefixes, displayPrefixes) {
+                if line.hasPrefix(prefix) {
+                    return displayPrefix + line.dropFirst(prefix.count)
                 }
             }
+            return line
+        }.joined(separator: "\n") : text
+        var attributed = AttributedString(text)
+        let pattern: String
+        switch rendering {
+        case .repack:
+            return attributed
+        case .atomic:
+            pattern = #"(?m)^[0-9]+%:"#
+        case .stratified:
+            let prefixes = displayPrefixes.map {
+                NSRegularExpression.escapedPattern(for: $0)
+            }.joined(separator: "|")
+            pattern = "(?m)^(?:\(prefixes))"
+        case .hedged:
+            pattern = #"\[(?:appears to|appear to|seems to|seem to|possibly|might|may)\]"#
         }
-    }
-
-    @ViewBuilder
-    private func tierSection(_ tier: StratificationTier) -> some View {
-        let statements = statements(for: tier)
-        if let caption = captions[tier] {
-            tierContent(title: tier.leadIn) {
-                Text(caption)
-                    .textSelection(.enabled)
-            }
-        } else if statements.isEmpty, let emptyMessage = tier.emptyMessage {
-            tierContent(title: tier.leadIn) {
-                Text(emptyMessage)
-                    .foregroundStyle(.secondary)
-            }
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return attributed
         }
-    }
-
-    private func tierContent<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-            content()
-                .frame(maxWidth: .infinity, alignment: .leading)
+        for match in expression.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let range = Range(match.range, in: text),
+                  let start = AttributedString.Index(range.lowerBound, within: attributed),
+                  let end = AttributedString.Index(range.upperBound, within: attributed) else { continue }
+            attributed[start..<end].inlinePresentationIntent = .stronglyEmphasized
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func statements(for tier: StratificationTier) -> [ScoredAtomic] {
-        let calibration = result.scoringMetric.stratificationCalibration(for: model)
-        return result.scoredAtomics.filter {
-            calibration.range(for: tier).contains($0.averageScore)
-        }
+        return attributed
     }
 }

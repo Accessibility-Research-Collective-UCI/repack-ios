@@ -53,7 +53,7 @@ struct ModelDownloadTests {
         )
         #expect(
             DownloadableModel.embeddingGemma.dependencyOrder
-                == [.embeddingGemmaTokenizer, .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B, .embeddingGemma]
+                == [.embeddingGemmaTokenizer, .embeddingGemmaIDFE2B, .embeddingGemmaIDFE4B, .conformalCalibration, .embeddingGemma]
         )
         #expect(
             DownloadableModel.embeddingModels == [.embeddingGemma]
@@ -102,7 +102,7 @@ struct ModelDownloadTests {
         let service = fixture.service(hub: hub)
         let plan = try await service.preparePlan(for: .embeddingGemma, policy: .install)
         #expect(plan.files.map(\.model) == models)
-        #expect(plan.totalBytes == 40)
+        #expect(plan.totalBytes == 50)
     }
 
     @Test("Embedding installation requires the token model and both calibrations")
@@ -119,7 +119,27 @@ struct ModelDownloadTests {
         try fixture.installModel(.embeddingGemma)
         #expect(await service.isInstalled(.embeddingGemma) == false)
         try fixture.installModel(.embeddingGemmaIDFE4B)
+        try fixture.installModel(.conformalCalibration)
         #expect(await service.isInstalled(.embeddingGemma))
+    }
+
+    @Test("Missing or corrupt certainty calibration downloads without replacing valid model files")
+    func repairConformalCalibration() async throws {
+        let fixture = try ModelDownloadFixture()
+        defer { fixture.cleanUp() }
+        for model in DownloadableModel.embeddingGemma.dependencyOrder where model != .conformalCalibration {
+            try fixture.installModel(model)
+        }
+        let hub = FixtureModelHub(sizes: [ConformalCalibration.filename: 100])
+        let service = fixture.service(hub: hub)
+        let missing = try await service.preparePlan(for: .embeddingGemma, policy: .install)
+        #expect(missing.files.map(\.model) == [.conformalCalibration])
+        try Data("corrupt".utf8).write(to: fixture.modelsDirectory.appending(path: ConformalCalibration.filename))
+        let corrupt = try await service.preparePlan(for: .embeddingGemma, policy: .install)
+        #expect(corrupt.files.map(\.model) == [.conformalCalibration])
+        try fixture.installModel(.conformalCalibration)
+        let complete = try await service.preparePlan(for: .embeddingGemma, policy: .install)
+        #expect(complete.files.isEmpty)
     }
 
     @Test("Calibration filenames resolve before caption-model substring matching")
@@ -543,7 +563,7 @@ struct ModelDownloadTests {
         #expect(resolver.deletionPlan(for: [obsolete.id]).ids == [obsolete.id])
         let current = try #require(items.first { $0.record.model == .embeddingGemma })
         let currentPlan = resolver.deletionPlan(for: [current.id])
-        #expect(currentPlan.items.count == 4)
+        #expect(currentPlan.items.count == 5)
         #expect(!currentPlan.ids.contains(obsolete.id))
     }
 
@@ -875,7 +895,9 @@ private struct ModelDownloadFixture {
         )
         FileManager.default.createFile(
             atPath: modelsDirectory.appending(path: model.fileName).path,
-            contents: Data()
+            contents: model == .conformalCalibration
+                ? try Data(contentsOf: #require(Bundle(for: CalibrationBundleMarker.self).url(forResource: ConformalCalibration.filename, withExtension: nil)))
+                : Data()
         )
     }
 

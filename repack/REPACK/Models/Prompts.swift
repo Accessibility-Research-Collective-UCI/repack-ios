@@ -137,13 +137,145 @@ nonisolated enum Prompts {
     Rewrite the provided unverified visual statements as concise, cautious prose for a blind or low-vision reader.
 
     Requirements:
-
-    1. Preserve every factual claim in the input. Do not omit, add, infer, correct, or elaborate on any detail.
-    2. Express each independent claim as uncertain using natural hedging, such as “may,” “might,” “appears to,” “seems to,” or “possibly.”
-    3. Ensure that a hedge clearly applies to every claim, including claims joined within the same sentence. Do not place an uncertain and an unqualified claim in the same sentence.
-    4. Combine closely related claims when doing so improves readability, but do not create new relationships, resolve ambiguities, or change which entities the claims refer to.
-    5. Avoid repetitive or awkward hedging while keeping the uncertainty of every claim explicit.
+    1. Preserve every factual claim in the input. Do not omit, add, infer, correct, or elaborate on any detail. Copy quoted text exactly, including its quotation marks, and do not add punctuation inside a quote.
+    2. Use only these hedge phrases: "may", "might", "possibly", "appears to", "appear to", "seems to", and "seem to". Write them as plain text without asterisks or other formatting.
+    3. Keep every claim clearly within the scope of a hedge. Use the fewest hedge phrases needed: one hedge should cover related details about the same subject.
+    4. Combine statements about the same entity into fluent prose. Prefer modifiers and compact lists over repeating the entity or hedge for every statement. Repeat a hedge only when the subject changes or the earlier hedge no longer clearly applies.
+    5. Preserve each claim's grammatical roles and ownership. Do not create new relationships, resolve ambiguities, or change which entities the claims refer to.
     6. Do not mention verification, confidence, uncertainty scores, thresholds, atomic statements, algorithms, or models.
     7. Output only the rewritten prose, with no introduction, explanation, labels, or formatting.
+
+    Do not write: The bag may be blue, may have a red label, and may contain crackers.
+    Write: The bag may be blue, have a red label, and contain crackers.
+
+    Do not write: There may be a bottle that may have a black cap and may display a white logo.
+    Write: There may be a bottle with a black cap and a white logo.
+
+    Example 1
+    Input:
+    There is a beer bottle.
+    The beer bottle is made of glass.
+    The beer bottle is brown.
+    The beer bottle has a gold cap.
+    The beer bottle has a yellow label.
+    The label features a crown design.
+    The label has text that reads "Walker's".
+    The word "AMBER" is below the text "Walker's" on the label.
+
+    Output:
+    There may be a brown glass beer bottle with a gold cap and a yellow label; the label may feature a crown design, the text "Walker's", and the word "AMBER" below it.
+
+    Example 2
+    Input:
+    There is a box.
+    The box contains 18 K-Cups.
+    The K-Cups are Keurig Brewed brand.
+    The K-Cups are Vanilla Biscotti flavored.
+    The box has a net weight of 5.71 ounces.
+    The box has a net weight of 162 grams.
+    The box has a black and silver design.
+    There is an image of coffee beans on the box.
+    The image is at the top left of the box.
+
+    Output:
+    There may be a black and silver box containing 18 Keurig Brewed Vanilla Biscotti-flavored K-Cups with a net weight of 5.71 ounces (162 grams) and an image of coffee beans at the top left.
+
+    Example 3
+    Input:
+    There is a white plastic container.
+    The container holds 100 ibuprofen tablets.
+    The label has the Walgreens brand name.
+    The label says "IBUPROFEN" in large yellow letters.
+    The label says "Ibuprofen Tablets USP 200mg".
+    The label says "Pain Reliever/Fever Reducer (NSAID)".
+    The label says "TABLETS 100 TABLETS" at the bottom.
+
+    Output:
+    There may be a white plastic container holding 100 ibuprofen tablets with a label that may feature the Walgreens brand name, "IBUPROFEN" in large yellow letters, "Ibuprofen Tablets USP 200mg", "Pain Reliever/Fever Reducer (NSAID)", and "TABLETS 100 TABLETS" at the bottom.
+
+    Example 4
+    Input:
+    There is a can.
+    The can is red.
+    The can has text that reads "TOMATO SAUCE".
+    There is a packet next to the can.
+    The packet is clear.
+    The packet has a white label.
+
+    Output:
+    There may be a red can with the text "TOMATO SAUCE". Next to it, there may be a clear packet with a white label.
+    """
+
+    static let confidenceGroupPrompt = """
+    Rewrite the provided image statements as one concise, natural sentence for a blind or low-vision reader. You will also be given the exact phrase that must begin the sentence.
+
+    Requirements:
+    1. Begin with the required prefix phrase exactly as written, and make it flow grammatically into the rest of the sentence.
+    2. Preserve every factual claim. Do not omit, add, infer, correct, elaborate on, or repeat any detail.
+    3. Combine closely related claims into fluent prose. Recast properties as modifiers, merge statements about the same entity, and consolidate lists. Do not merely join the input sentences with commas or "and."
+    4. Preserve each claim's grammatical roles and ownership. Do not move an attribute, action, label, or contained item from one entity to another.
+    5. Do not create new relationships, resolve ambiguities, or change which entities the claims refer to.
+    6. Do not add hedging language such as "may," "might," "possibly," "probably," "appears," or "seems." The required prefix phrase is the only uncertainty language.
+    7. Output only the rewritten sentence, with no introduction, explanation, headings, labels, bullet points, or formatting.
+
+    Example 1
+    Required prefix phrase:
+    We think it is highly likely that
+
+    Statements:
+    There is a beer bottle.
+    The beer bottle is made of glass.
+    The beer bottle is brown.
+    The beer bottle has a cap.
+    The cap is gold.
+    The beer bottle has a label.
+    The label is yellow.
+    The label features a crown design.
+    The label has text that reads "Walker's".
+    The word "AMBER" is below the text "Walker's" on the label.
+
+    Output:
+    We think it is highly likely that there is a brown glass beer bottle with a gold cap and a yellow label featuring a crown design, the text "Walker's," and the word "AMBER" below it.
+
+    Example 2
+    Required prefix phrase:
+    We think it is somewhat likely that
+
+    Statements:
+    There is a box.
+    The box contains K-Cups.
+    The K-Cups are Keurig Brewed brand.
+    The K-Cups are Vanilla Biscotti flavored.
+    The box contains 18 K-Cups.
+    The box has a net weight of 5.71 ounces.
+    The box has a net weight of 162 grams.
+    The box has a black and silver design.
+    There is an image of coffee beans on the box.
+    The image of coffee beans is at the top left of the box.
+
+    Output:
+    We think it is somewhat likely that there is a black and silver box containing 18 Keurig Brewed Vanilla Biscotti-flavored K-Cups with a net weight of 5.71 ounces (162 grams) and an image of coffee beans at the top left.
+
+    Example 3
+    Required prefix phrase:
+    We are unsure whether
+
+    Statements:
+    There is a frozen patty burger.
+    The burger has toppings.
+    The burger is on cardboard packaging.
+    The packaging includes text for "BEAN".
+    The packaging includes text for "burger".
+    The packaging includes nutritional information.
+    The patty is dark brown.
+    There is lettuce on the patty.
+    There are diced tomatoes on the patty.
+    There is corn on the patty.
+    There are slices of jalapeño peppers on the patty.
+    There is a plain bun piece.
+    The plain bun piece is to the left of the patty.
+
+    Output:
+    We are unsure whether there is a frozen dark brown patty burger topped with lettuce, diced tomatoes, corn, and sliced jalapeño peppers on cardboard packaging with the text "BEAN" and "burger," nutritional information, and a plain bun piece to the left of the patty.
     """
 }

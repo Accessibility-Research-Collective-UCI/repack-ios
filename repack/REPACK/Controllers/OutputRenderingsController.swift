@@ -5,180 +5,184 @@ import Observation
 @Observable
 final class OutputRenderingsController {
     enum Rendering: String, CaseIterable, Identifiable {
-        case repack
-        case atomic
-        case hedged
-        case stratified
-
+        case repack, atomic, stratified, hedged
         var id: Self { self }
-
+        var tabTitle: String {
+            switch self {
+            case .repack: String(localized: "Caption")
+            case .atomic: String(localized: .percentageStatementsTab)
+            case .stratified: String(localized: .confidenceGroupsTab)
+            case .hedged: String(localized: .hedgingLanguageTab)
+            }
+        }
         var title: String {
             switch self {
-            case .repack:
-                String(localized: "REPACK")
-            case .atomic:
-                String(localized: "Atomic")
-            case .hedged:
-                String(localized: "Hedged")
-            case .stratified:
-                String(localized: "Stratified")
+            case .repack: String(localized: "Caption")
+            case .atomic: String(localized: .percentageStatements)
+            case .stratified: String(localized: .confidenceGroups)
+            case .hedged: String(localized: .hedgingLanguageThreshold(90))
             }
         }
     }
 
-    private(set) var selection: Rendering = .repack
-    private(set) var hedgedCaption: String?
-    private(set) var stratifiedCaptions: [StratificationTier: String] = [:]
-    private(set) var isGenerating = false
-    private(set) var errorMessage: String?
-
-    private var generationTask: Task<Void, Never>?
-    private var requestID = UUID()
-    private var hedgedThreshold: Double?
-    private var stratificationIsCached = false
-
-    func select(
-        _ rendering: Rendering,
-        result: CaptionResult,
-        pipeline: REPACKPipeline,
-        model: DownloadableModel
-    ) {
-        selection = rendering
-        errorMessage = nil
-
-        switch rendering {
-        case .repack, .atomic:
-            cancelGeneration()
-        case .hedged:
-            generateHedged(result: result, pipeline: pipeline)
-        case .stratified:
-            generateStratified(result: result, pipeline: pipeline, model: model)
-        }
-    }
-
-    func refresh(
-        result: CaptionResult,
-        pipeline: REPACKPipeline,
-        model: DownloadableModel
-    ) {
-        select(selection, result: result, pipeline: pipeline, model: model)
-    }
-
-    func invalidateHedged() {
-        hedgedCaption = nil
-        hedgedThreshold = nil
-        if selection == .hedged {
-            cancelGeneration()
-        }
-    }
+    var selection: Rendering = .repack
+    private(set) var captions: [Rendering: String] = [:]
+    private(set) var errors: [Rendering: String] = [:]
+    private(set) var generating: Rendering?
+    private(set) var displayedCertainty = 90
+    var requestedCertainty = 90
+    var revision = 0
+    private var worker: Task<Void, Never>?
+    private var epoch = UUID()
+    private var confidenceGroups: [String] = []
 
     func reset() {
-        cancelGeneration()
+        worker?.cancel()
+        epoch = UUID()
         selection = .repack
-        hedgedCaption = nil
-        stratifiedCaptions = [:]
-        errorMessage = nil
-        hedgedThreshold = nil
-        stratificationIsCached = false
+        captions = [:]
+        confidenceGroups = []
+        errors = [:]
+        generating = nil
+        displayedCertainty = 90
+        requestedCertainty = 90
+        revision += 1
     }
 
-    func configurePreview(
-        selection: Rendering,
-        hedgedCaption: String? = nil,
-        stratifiedCaptions: [StratificationTier: String] = [:],
-        isGenerating: Bool = false,
-        errorMessage: String? = nil
-    ) {
-        cancelGeneration()
-        self.selection = selection
-        self.hedgedCaption = hedgedCaption
-        self.stratifiedCaptions = stratifiedCaptions
-        self.isGenerating = isGenerating
-        self.errorMessage = errorMessage
+    func finishCancellation() async {
+        worker?.cancel()
+        await worker?.value
     }
 
-    private func generateHedged(
-        result: CaptionResult,
-        pipeline: REPACKPipeline
-    ) {
-        guard hedgedThreshold != result.threshold || hedgedCaption == nil else { return }
-
-        let removed = result.scoredAtomics.compactMap { atomic in
-            atomic.averageScore < result.threshold ? atomic.statement : nil
-        }
-        guard !removed.isEmpty else {
-            cancelGeneration()
-            hedgedCaption = nil
-            hedgedThreshold = result.threshold
-            return
-        }
-
-        startGeneration { [weak self] requestID in
-            let caption = try await pipeline.hedge(atomics: removed)
-            try Task.checkCancellation()
-            guard let self, self.requestID == requestID else { return }
-            self.hedgedCaption = caption
-            self.hedgedThreshold = result.threshold
-        }
+    func retry() {
+        errors[selection] = nil
+        revision += 1
     }
 
-    private func generateStratified(
+    func setCertainty(_ value: Int) {
+        requestedCertainty = min(100, max(0, value))
+        errors[.repack] = nil
+        revision += 1
+    }
+
+    /// Cancel and join the previous operation before using its inference engine again.
+    func prepare(
         result: CaptionResult,
         pipeline: REPACKPipeline,
-        model: DownloadableModel
-    ) {
-        guard !stratificationIsCached else { return }
-        let calibration = result.scoringMetric.stratificationCalibration(for: model)
-
-        startGeneration { [weak self] requestID in
-            var captions: [StratificationTier: String] = [:]
-            for tier in StratificationTier.allCases {
-                let statements = result.scoredAtomics.compactMap { atomic in
-                    calibration.range(for: tier).contains(atomic.averageScore)
-                        ? atomic.statement
-                        : nil
-                }
-                if !statements.isEmpty {
-                    captions[tier] = try await pipeline.repackage(atomics: statements)
+        calibration: ConformalCalibration,
+        update: @escaping @MainActor (CaptionResult) -> Void
+    ) async {
+        let previous = worker
+        previous?.cancel()
+        let epoch = epoch
+        let certainty = requestedCertainty
+        let task = Task { [weak self] in
+            await previous?.value
+            guard let self, self.epoch == epoch, !Task.isCancelled else { return }
+            defer { if self.epoch == epoch { self.generating = nil } }
+            if certainty != self.displayedCertainty, self.errors[.repack] == nil {
+                self.generating = .repack
+                do {
+                    try await Task.sleep(for: .milliseconds(600))
+                    let regenerated = try await pipeline.regenerateCaption(threshold: calibration.threshold(certainty: certainty))
+                    try Task.checkCancellation()
+                    guard self.epoch == epoch else { return }
+                    self.displayedCertainty = certainty
+                    update(regenerated)
+                } catch {
+                    guard !Task.isCancelled, self.epoch == epoch else { return }
+                    self.errors[.repack] = error.localizedDescription
                 }
             }
-            try Task.checkCancellation()
-            guard let self, self.requestID == requestID else { return }
-            self.stratifiedCaptions = captions
-            self.stratificationIsCached = true
+            for rendering in [Rendering.atomic, .stratified, .hedged] {
+                guard !Task.isCancelled, self.epoch == epoch else { return }
+                guard self.captions[rendering] == nil, self.errors[rendering] == nil else { continue }
+                self.generating = rendering
+                do {
+                    let text: String
+                    switch rendering {
+                    case .atomic:
+                        text = Self.sorted(result.scoredAtomics).map {
+                            "\(calibration.percentage(score: $0.averageScore))%: \($0.statement)"
+                        }.joined(separator: "\n")
+                    case .stratified:
+                        var remaining = Self.sorted(result.scoredAtomics)
+                        for index in 0..<3 {
+                            let cutoff = index == 0 ? calibration.threshold(certainty: 90) : calibration.threshold(certainty: 80)
+                            let group = index == 2 ? remaining : remaining.filter { $0.averageScore >= cutoff }
+                            if index < 2 { remaining.removeAll { $0.averageScore >= cutoff } }
+                            guard index >= self.confidenceGroups.count else { continue }
+                            let text = group.isEmpty ? Self.emptyGroups[index]
+                                : try await pipeline.confidenceGroup(atomics: group.map(\.statement), prefix: Self.prefixes[index])
+                            try Task.checkCancellation()
+                            guard self.epoch == epoch else { return }
+                            self.confidenceGroups.append(text)
+                        }
+                        text = self.confidenceGroups.joined(separator: "\n\n")
+                    case .hedged:
+                        let threshold = calibration.threshold(certainty: 90)
+                        let certain = result.scoredAtomics.filter { $0.averageScore > threshold }.map(\.statement)
+                        let uncertain = result.scoredAtomics.filter { $0.averageScore <= threshold }.map(\.statement)
+                        let caption = !certain.isEmpty && certain == result.retainedAtomics ? result.caption : try await pipeline.repackage(atomics: certain)
+                        try Task.checkCancellation()
+                        let hedged = try await pipeline.hedge(atomics: uncertain)
+                        text = [caption, Self.markHedges(hedged)].filter { !$0.isEmpty }.joined(separator: " ")
+                    case .repack: continue
+                    }
+                    try Task.checkCancellation()
+                    guard self.epoch == epoch else { return }
+                    self.captions[rendering] = text
+                } catch {
+                    guard !Task.isCancelled, self.epoch == epoch else { return }
+                    self.errors[rendering] = error.localizedDescription
+                }
+            }
+        }
+        worker = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
         }
     }
 
-    private func startGeneration(
-        operation: @escaping @MainActor (UUID) async throws -> Void
-    ) {
-        cancelGeneration()
-        let requestID = UUID()
-        self.requestID = requestID
-        isGenerating = true
-        errorMessage = nil
-
-        generationTask = Task { [weak self] in
-            do {
-                try await operation(requestID)
-                guard let self, self.requestID == requestID else { return }
-                self.isGenerating = false
-                self.generationTask = nil
-            } catch is CancellationError {
-                return
-            } catch {
-                guard let self, self.requestID == requestID else { return }
-                self.isGenerating = false
-                self.generationTask = nil
-                self.errorMessage = error.localizedDescription
-            }
-        }
+    static func sorted(_ atomics: [ScoredAtomic]) -> [ScoredAtomic] {
+        atomics.enumerated().sorted {
+            $0.element.averageScore == $1.element.averageScore
+                ? $0.offset < $1.offset : $0.element.averageScore > $1.element.averageScore
+        }.map(\.element)
     }
 
-    private func cancelGeneration() {
-        requestID = UUID()
-        generationTask?.cancel()
-        generationTask = nil
-        isGenerating = false
+    static let prefixes = [
+        "We think it is highly likely that",
+        "We think it is somewhat likely that",
+        "We are unsure whether"
+    ]
+    static let emptyGroups = [
+        String(localized: .noHighlyLikelyInformation),
+        String(localized: .noSomewhatLikelyInformation),
+        String(localized: .noUnsureInformation)
+    ]
+
+    static func markHedges(_ text: String) -> String {
+        text.replacingOccurrences(
+            of: #"\b(appears to|appear to|seems to|seem to|possibly|might|may)\b"#,
+            with: "[$1]", options: [.regularExpression, .caseInsensitive]
+        ).replacingOccurrences(
+            of: #"([.!?])([\"”'])\s*[.!?]\s*$"#,
+            with: "$1$2", options: .regularExpression
+        )
+    }
+
+    func configurePreview(selection: Rendering, hedgedCaption: String? = nil,
+                          stratifiedCaption: String? = nil, percentageStatements: String? = nil,
+                          isGenerating: Bool = false, errorMessage: String? = nil) {
+        reset()
+        self.selection = selection
+        captions[.hedged] = isGenerating || errorMessage != nil ? nil : hedgedCaption
+        captions[.stratified] = stratifiedCaption
+        captions[.atomic] = percentageStatements
+        generating = isGenerating ? selection : nil
+        errors[selection] = errorMessage
     }
 }

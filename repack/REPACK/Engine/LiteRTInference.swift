@@ -14,6 +14,7 @@ protocol InferenceEngine: AnyObject {
 final class LiteRTInferenceEngine: InferenceEngine {
     let engine: Engine
     private var activeConversation: Conversation?
+    private var activeConversationID: UUID?
 
     init(engine: Engine) {
         self.engine = engine
@@ -111,14 +112,9 @@ final class LiteRTInferenceEngine: InferenceEngine {
     }
 
     func repackage(atomics: [String]) async throws -> String {
-        let data = try JSONEncoder().encode(atomics)
-        guard let encodedAtomics = String(data: data, encoding: .utf8) else {
-            throw AtomizationError.unableToEncodeInput
-        }
-
-        return try await generateText(
+        try await generateText(
             systemPrompt: Prompts.repackagePrompt,
-            userPrompt: "Atomic statements:\n\(encodedAtomics)"
+            userPrompt: atomics.joined(separator: "\n")
         )
     }
 
@@ -127,10 +123,13 @@ final class LiteRTInferenceEngine: InferenceEngine {
     }
 
     private func send(_ message: Message, through conversation: Conversation) async throws -> Message {
+        let conversationID = UUID()
         activeConversation = conversation
+        activeConversationID = conversationID
         defer {
             if activeConversation === conversation {
                 activeConversation = nil
+                activeConversationID = nil
             }
         }
 
@@ -138,6 +137,7 @@ final class LiteRTInferenceEngine: InferenceEngine {
             try await conversation.sendMessage(message)
         } onCancel: {
             Task { @MainActor [weak self] in
+                guard self?.activeConversationID == conversationID else { return }
                 await self?.cancel()
             }
         }

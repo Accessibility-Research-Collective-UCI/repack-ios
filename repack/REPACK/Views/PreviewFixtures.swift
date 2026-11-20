@@ -29,7 +29,7 @@ extension AppModel {
     static var previewOutput: AppModel {
         previewOutput(
             sampleAtomizationStatus: .parsed,
-            scoringMetric: .bleu
+            scoringMetric: .semanticSimilarity
         )
     }
 
@@ -43,7 +43,7 @@ extension AppModel {
     static var previewOutputWithAtomizationWarning: AppModel {
         previewOutput(
             sampleAtomizationStatus: .unparseable,
-            scoringMetric: .bleu
+            scoringMetric: .semanticSimilarity
         )
     }
 
@@ -54,14 +54,15 @@ extension AppModel {
     ) -> AppModel {
         let model = previewOutput(
             sampleAtomizationStatus: .parsed,
-            scoringMetric: .bleu
+            scoringMetric: .semanticSimilarity
         )
         model.outputRenderings.configurePreview(
             selection: rendering,
-            hedgedCaption: rendering == .hedged ? "A red can may be visible on a table." : nil,
-            stratifiedCaptions: rendering == .stratified
-                ? [StratificationTier.somewhatSure: "A red can may be visible."]
-                : [:],
+            hedgedCaption: rendering == .hedged ? "A red can [may] be visible on a table." : nil,
+            stratifiedCaption: rendering == .stratified
+                ? "We think it is highly likely that a red can is visible."
+                : nil,
+            percentageStatements: rendering == .atomic ? "95%: A red can is visible." : nil,
             isGenerating: isGenerating,
             errorMessage: errorMessage
         )

@@ -9,7 +9,7 @@ extension AppModel {
         try? await imageStore.removeOrphans(keeping: ownedImageURLs)
         await refreshLocalModels(preferredModelFilename: pendingRun?.modelFilename)
         if pendingRun == nil {
-            scoringMetric = defaultScoringMetric
+            scoringMetric = .semanticSimilarity
         }
     }
 
@@ -39,10 +39,7 @@ extension AppModel {
         if modelURL == nil || selectionChanged || pipeline == nil {
             phase = .missingModel
         }
-        if scoringMetric == .semanticSimilarity,
-           !isModelInstalled(.embeddingGemma) {
-            scoringMetric = .bleu
-        }
+        scoringMetric = .semanticSimilarity
     }
 
     func selectModel(_ model: LocalModel) async {
@@ -384,7 +381,6 @@ extension AppModel {
             return
         }
 
-        thresholdTask?.cancel()
         processTask?.cancel()
         outputRenderings.reset()
         result = nil
@@ -397,7 +393,7 @@ extension AppModel {
         let prompt = samplePrompt
         let count = sampleCount
         let requestedThreshold = threshold
-        let requestedScoringMetric = scoringMetric
+        let requestedScoringMetric = ScoringMetric.semanticSimilarity
         let runID = UUID()
         currentRunID = runID
         savePendingRun(
@@ -416,7 +412,6 @@ extension AppModel {
                 image: image,
                 prompt: prompt,
                 count: count,
-                threshold: requestedThreshold,
                 scoringMetric: requestedScoringMetric
             )
         }
@@ -462,43 +457,8 @@ extension AppModel {
         )
     }
 
-    func updateThreshold(_ newValue: Double) {
-        threshold = newValue
-        guard result != nil, let pipeline else { return }
-
-        outputRenderings.invalidateHedged()
-        thresholdTask?.cancel()
-        thresholdRequestID = UUID()
-        let requestID = thresholdRequestID
-
-        thresholdTask = Task {
-            do {
-                try await Task.sleep(for: .milliseconds(600))
-                try Task.checkCancellation()
-                isRegenerating = true
-                defer {
-                    if requestID == thresholdRequestID {
-                        isRegenerating = false
-                    }
-                }
-
-                let regenerated = try await pipeline.regenerateCaption(threshold: newValue)
-                try Task.checkCancellation()
-                guard requestID == thresholdRequestID else { return }
-                result = regenerated
-                outputRenderings.refresh(
-                    result: regenerated,
-                    pipeline: pipeline,
-                    model: selectedCaptioningModel
-                )
-                announce(String(localized: "Caption updated."))
-            } catch is CancellationError {
-                return
-            } catch {
-                guard requestID == thresholdRequestID else { return }
-                errorMessage = error.localizedDescription
-            }
-        }
+    func updateCertainty(_ value: Int) {
+        outputRenderings.setCertainty(value)
     }
 
     func cancelProcessing() async {
@@ -507,18 +467,16 @@ extension AppModel {
         let activeProcessTask = processTask
         processTask = nil
         activeProcessTask?.cancel()
-        thresholdTask?.cancel()
-        thresholdTask = nil
         captionExecutionCoordinator.complete(success: false)
         executionMode = nil
         await pipeline?.cancel()
+        await outputRenderings.finishCancellation()
         pipeline?.discardCurrentRun()
         clearPendingCaptionRun()
         result = nil
         progress = nil
         processStartedAt = nil
         completedElapsed = nil
-        isRegenerating = false
         errorMessage = nil
         phase = pipeline == nil ? .missingModel : .ready
         announce(String(localized: "REPACK cancelled."))
@@ -530,16 +488,10 @@ extension AppModel {
     }
 
     func selectOutputRendering(_ rendering: OutputRenderingsController.Rendering) {
-        guard let result, let pipeline else { return }
-        outputRenderings.select(
-            rendering,
-            result: result,
-            pipeline: pipeline,
-            model: selectedCaptioningModel
-        )
+        outputRenderings.selection = rendering
     }
 
     func retryOutputRendering() {
-        selectOutputRendering(outputRenderings.selection)
+        outputRenderings.retry()
     }
 }

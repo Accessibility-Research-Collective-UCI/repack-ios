@@ -279,9 +279,12 @@ actor ModelDownloadService: ModelDownloadServicing {
 
     private func isInstalledFile(_ model: DownloadableModel) -> Bool {
         guard let directory = try? modelsDirectory() else { return false }
-        return fileManager.fileExists(
-            atPath: directory.appending(path: model.fileName).path
-        )
+        let url = directory.appending(path: model.fileName)
+        if model == .conformalCalibration {
+            guard let data = try? Data(contentsOf: url) else { return false }
+            return ConformalCalibration.hasExpectedDigest(data)
+        }
+        return fileManager.fileExists(atPath: url.path)
     }
 
     private func checkAvailableCapacity(requiredBytes: Int64) throws {

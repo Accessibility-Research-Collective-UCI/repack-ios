@@ -164,7 +164,7 @@ import SwiftUI
     }
 }
 
-#Preview("Output · Atomic") {
+#Preview("Output · Percentage Statements") {
     NavigationStack {
         RunView(
             model: .previewOutput(rendering: .atomic),
@@ -175,7 +175,7 @@ import SwiftUI
     }
 }
 
-#Preview("Output · Hedged") {
+#Preview("Output · Hedging Language") {
     NavigationStack {
         RunView(
             model: .previewOutput(rendering: .hedged),
@@ -186,7 +186,7 @@ import SwiftUI
     }
 }
 
-#Preview("Output · Hedged · Loading") {
+#Preview("Output · Hedging Language · Loading") {
     NavigationStack {
         RunView(
             model: .previewOutput(rendering: .hedged, isGenerating: true),
@@ -197,7 +197,7 @@ import SwiftUI
     }
 }
 
-#Preview("Output · Hedged · Error") {
+#Preview("Output · Hedging Language · Error") {
     NavigationStack {
         RunView(
             model: .previewOutput(
@@ -211,7 +211,7 @@ import SwiftUI
     }
 }
 
-#Preview("Output · Stratified") {
+#Preview("Output · Confidence Groups") {
     NavigationStack {
         RunView(
             model: .previewOutput(rendering: .stratified),

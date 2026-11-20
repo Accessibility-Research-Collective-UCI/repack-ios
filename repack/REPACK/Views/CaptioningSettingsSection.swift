@@ -38,31 +38,6 @@ struct CaptioningSettingsSection: View {
         }
 
         Section {
-            Picker("Similarity Scorer", selection: $model.scoringMetric) {
-                ForEach(ScoringMetric.allCases) { metric in
-                    Text(metric.title).tag(metric)
-                }
-            }
-            .listRowSeparator(.hidden)
-            .pickerStyle(.navigationLink)
-            .disabled(model.isBusy)
-        } footer: {
-            Text(model.scoringMetric.description)
-
-            if model.scoringMetric == .semanticSimilarity,
-               !model.semanticScoringAvailable {
-                Label(
-                    "Embedding Gemma model files are not available.",
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-                .foregroundStyle(.orange)
-                .accessibilityHint(
-                    "Download Embedding Gemma before captioning."
-                )
-            }
-        }
-
-        Section {
             Button {
                 showLibrary = true
             } label: {
