@@ -42,6 +42,32 @@ struct BenchmarkingTests {
         #expect(json["cooldownSeconds"] as? Int == 7)
     }
 
+    @Test("Embedding diagnostics are separate from elapsed totals and optional in JSON")
+    func embeddingTimingExport() throws {
+        let result = CaptionResult(
+            captions: [], atomizedCaptions: [], scoredAtomics: [], retainedAtomics: [],
+            caption: "", threshold: 0.5, scoringMetric: .semanticSimilarity,
+            timings: [StageTiming(stage: .atomizing, duration: .seconds(3))],
+            embeddingDuration: .seconds(2)
+        )
+        let semantic = BenchmarkImageTiming(file: "semantic.jpg", result: result, elapsed: .seconds(5))
+        #expect(semantic.stages == ["atomization": 3])
+        var noEmbedding = result
+        noEmbedding.embeddingDuration = nil
+        let plain = BenchmarkImageTiming(file: "plain.jpg", result: noEmbedding, elapsed: .seconds(3))
+        let results = BenchmarkResults(timing: [semantic, plain])
+        #expect(results.totalTime == 8)
+        #expect(results.averageTime == 4)
+        let data = try JSONEncoder().encode(results)
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let timing = try #require(json["timing"] as? [[String: Any]])
+        let embedding = try #require(timing[0]["embedding"] as? [String: Any])
+        #expect(embedding["totalTime"] as? Double == 2)
+        #expect(timing[0]["totalTime"] as? Double == 5)
+        #expect(timing[1]["embedding"] == nil)
+        #expect(try JSONDecoder().decode(BenchmarkResults.self, from: data) == results)
+    }
+
     @Test("Engine choices remain selectable before model discovery")
     func stableEngineChoices() {
         let model = BenchmarkViewModel(

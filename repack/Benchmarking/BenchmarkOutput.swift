@@ -20,10 +20,38 @@ nonisolated struct BenchmarkFailure: Codable, Equatable, Error, Sendable {
     let file: String?
 }
 
+nonisolated struct BenchmarkEmbeddingTiming: Codable, Equatable, Sendable {
+    let totalTime: Double
+}
+
 nonisolated struct BenchmarkImageTiming: Codable, Equatable, Sendable {
     let file: String
     let totalTime: Double
     let stages: [String: Double]
+    // Embedding work overlaps atomization and must not be added to totalTime.
+    var embedding: BenchmarkEmbeddingTiming?
+}
+
+extension BenchmarkImageTiming {
+    nonisolated init(file: String, result: CaptionResult, elapsed: Duration) {
+        let stages = Dictionary(uniqueKeysWithValues: result.timings.map { timing in
+            let key = switch timing.stage {
+            case .sampling: "sampling"
+            case .atomizing: "atomization"
+            case .scoring: "scoring"
+            case .repackaging: "repacking"
+            }
+            return (key, timing.duration.benchmarkSeconds)
+        })
+        self.init(
+            file: file,
+            totalTime: elapsed.benchmarkSeconds,
+            stages: stages,
+            embedding: result.embeddingDuration.map {
+                BenchmarkEmbeddingTiming(totalTime: $0.benchmarkSeconds)
+            }
+        )
+    }
 }
 
 nonisolated struct BenchmarkCaptionMetadata: Codable, Equatable, Sendable {

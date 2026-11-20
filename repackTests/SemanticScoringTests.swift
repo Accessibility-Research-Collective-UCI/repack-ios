@@ -121,7 +121,9 @@ struct SemanticScoringTests {
     func bundledModelSmokeTest() async throws {
         let resources = try #require(EmbeddingModelResources.bundled())
         let service = EmbeddingGemmaService(resources: resources, calibration: .e2b)
-        let values = try await service.embeddings(for: ["A red package.", "A red package."])
+        let measured = try await service.embeddings(for: ["A red package.", "A red package."])
+        #expect(measured.duration > .zero)
+        let values = measured.embeddings
         #expect(values.count == 2)
         #expect(values[0] == values[1])
         #expect(values[0].tokenIDs == [2, 236776, 2604, 8289, 236761, 1])
@@ -132,6 +134,9 @@ struct SemanticScoringTests {
                 #expect(abs(magnitude - 1) < 1e-4)
             }
         }
+        let cached = try await service.embeddings(for: ["A red package."])
+        #expect(cached.embeddings == [values[0]])
+        #expect(cached.duration > .zero)
         await service.clearStatementCache()
     }
 

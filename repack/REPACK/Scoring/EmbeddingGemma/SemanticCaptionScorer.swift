@@ -20,10 +20,12 @@ nonisolated struct SemanticCaptionScorer: CaptionScorer {
         guard let embeddingProvider else {
             throw PipelineError.missingEmbeddingModel
         }
+        let measured = try await embeddingProvider.embeddings(for: statements)
         return PreparedCaptionScoringInput(
             captionID: captionID,
             statements: statements,
-            embeddings: try await embeddingProvider.embeddings(for: statements)
+            embeddings: measured.embeddings,
+            embeddingDuration: measured.duration
         )
     }
 

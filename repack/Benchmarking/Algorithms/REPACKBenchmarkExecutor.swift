@@ -38,6 +38,8 @@ final class REPACKBenchmarkExecutor: BenchmarkAlgorithmExecuting {
         image: URL,
         progress: @escaping @MainActor (BenchmarkAlgorithmProgress) -> Void
     ) async throws -> BenchmarkImageExecutionResult {
+        let clock = ContinuousClock()
+        let start = clock.now
         let result = try await pipeline.process(
             image: image,
             samplePrompt: prompt,
@@ -48,16 +50,8 @@ final class REPACKBenchmarkExecutor: BenchmarkAlgorithmExecuting {
             progress(Self.benchmarkProgress(from: pipelineProgress))
         }
 
-        let stageDurations = Dictionary(
-            uniqueKeysWithValues: result.timings.map {
-                (Self.key(for: $0.stage), $0.duration.benchmarkSeconds)
-            }
-        )
-        let timing = BenchmarkImageTiming(
-            file: image.lastPathComponent,
-            totalTime: stageDurations.values.reduce(0, +),
-            stages: stageDurations
-        )
+        let elapsed = start.duration(to: clock.now)
+        let timing = BenchmarkImageTiming(file: image.lastPathComponent, result: result, elapsed: elapsed)
         return BenchmarkImageExecutionResult(
             timing: timing,
             metadata: BenchmarkImageMetadata(
@@ -90,15 +84,6 @@ final class REPACKBenchmarkExecutor: BenchmarkAlgorithmExecuting {
             stage: stage,
             fractionCompleted: progress.fractionCompleted
         )
-    }
-
-    private static func key(for stage: PipelineStage) -> String {
-        switch stage {
-        case .sampling: "sampling"
-        case .atomizing: "atomization"
-        case .scoring: "scoring"
-        case .repackaging: "repacking"
-        }
     }
 
     private static func metadata(from result: CaptionResult) -> REPACKBenchmarkMetadata {

@@ -23,7 +23,9 @@ actor EmbeddingGemmaService: TextEmbeddingProviding {
 
     func clearStatementCache() { statementCache.removeAll() }
 
-    func embeddings(for statements: [String]) async throws -> [TokenEmbedding] {
+    func embeddings(for statements: [String]) async throws -> MeasuredEmbeddings {
+        let clock = ContinuousClock()
+        let start = clock.now
         try Task.checkCancellation()
         try prepareIfNeeded()
         var result: [TokenEmbedding] = []
@@ -37,7 +39,7 @@ actor EmbeddingGemmaService: TextEmbeddingProviding {
                 result.append(embedding)
             }
         }
-        return result
+        return MeasuredEmbeddings(embeddings: result, duration: start.duration(to: clock.now))
     }
 
     private func prepareIfNeeded() throws {

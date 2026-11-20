@@ -6,15 +6,18 @@ nonisolated struct PreparedCaptionScoringInput: Equatable, Sendable {
     let captionID: Int
     let statements: [String]
     let embeddings: [TokenEmbedding]?
+    let embeddingDuration: Duration?
 
     init(
         captionID: Int,
         statements: [String],
-        embeddings: [TokenEmbedding]? = nil
+        embeddings: [TokenEmbedding]? = nil,
+        embeddingDuration: Duration? = nil
     ) {
         self.captionID = captionID
         self.statements = statements
         self.embeddings = embeddings
+        self.embeddingDuration = embeddingDuration
     }
 }
 
