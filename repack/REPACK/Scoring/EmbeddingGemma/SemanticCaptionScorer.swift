@@ -1,5 +1,7 @@
 /// Scores each distinct ordered statement pair once, then preserves original occurrences.
 nonisolated struct SemanticCaptionScorer: CaptionScorer {
+    static let implementation = "bertscore-f1-idf-layer16-v1"
+
     let metric = ScoringMetric.semanticSimilarity
     private let embeddingProvider: (any TextEmbeddingProviding)?
 

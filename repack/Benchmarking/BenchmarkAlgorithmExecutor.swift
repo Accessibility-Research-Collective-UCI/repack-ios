@@ -23,7 +23,8 @@ protocol BenchmarkAlgorithmExecuting: AnyObject {
 
 @MainActor
 protocol BenchmarkAlgorithmExecutorBuilding: AnyObject {
-    func makeExecutor(for request: BenchmarkRunRequest) async throws
+    func resolve(_ request: BenchmarkRunRequest) -> ResolvedBenchmarkRun
+    func makeExecutor(for run: ResolvedBenchmarkRun) async throws
         -> any BenchmarkAlgorithmExecuting
 }
 
@@ -40,15 +41,34 @@ final class DefaultBenchmarkAlgorithmExecutorFactory: BenchmarkAlgorithmExecutor
         self.devicePolicy = devicePolicy
     }
 
-    func makeExecutor(for request: BenchmarkRunRequest) async throws
+    func resolve(_ request: BenchmarkRunRequest) -> ResolvedBenchmarkRun {
+        let resources: EmbeddingModelResources?
+        if case .repack(let settings) = request.algorithmConfiguration,
+           settings.scoringMetric == .semanticSimilarity {
+            resources = EmbeddingModelResources.available()
+        } else {
+            resources = nil
+        }
+        return ResolvedBenchmarkRun(
+            request: request,
+            visionSettings: engineFactory.visionSettings,
+            textSettings: engineFactory.textSettings,
+            embeddingResources: resources
+        )
+    }
+
+    func makeExecutor(for run: ResolvedBenchmarkRun) async throws
         -> any BenchmarkAlgorithmExecuting {
-        switch request.algorithmConfiguration {
+        let request = run.request
+        return switch request.algorithmConfiguration {
         case .repack(let configuration):
             try await REPACKBenchmarkExecutor(
                 visionModelURL: request.visionModel.url,
                 textModelURL: request.textModel.url,
                 prompt: CaptionPrompt.custom(request.prompt.text),
                 configuration: configuration,
+                embeddingResources: run.embeddingResources,
+                calibration: run.calibration,
                 engineFactory: engineFactory,
                 devicePolicy: devicePolicy
             )

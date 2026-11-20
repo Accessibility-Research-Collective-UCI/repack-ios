@@ -39,6 +39,35 @@ nonisolated struct BenchmarkRunRequest: Sendable {
     let cooldownSeconds: Int
 }
 
+/// Captured once and reused when engines are recreated between images.
+nonisolated struct ResolvedBenchmarkRun: Sendable {
+    let request: BenchmarkRunRequest
+    let visionSettings: InferenceEngineSettings
+    let textSettings: InferenceEngineSettings
+    let embeddingResources: EmbeddingModelResources?
+    let calibration: IDFCalibration?
+
+    init(
+        request: BenchmarkRunRequest,
+        visionSettings: InferenceEngineSettings,
+        textSettings: InferenceEngineSettings,
+        embeddingResources: EmbeddingModelResources?
+    ) {
+        self.request = request
+        self.visionSettings = visionSettings
+        self.textSettings = textSettings
+        self.embeddingResources = embeddingResources
+        if case .repack(let settings) = request.algorithmConfiguration,
+           settings.scoringMetric == .semanticSimilarity {
+            calibration = try? IDFCalibration.resolve(
+                visionModel: request.visionModel.url, textModel: request.textModel.url
+            )
+        } else {
+            calibration = nil
+        }
+    }
+}
+
 nonisolated struct BenchmarkSettings: Encodable, Equatable, Sendable {
     let visionEngine: BenchmarkEngineSettings
     let textEngine: BenchmarkEngineSettings
@@ -91,9 +120,9 @@ nonisolated enum BenchmarkAlgorithmSettings: Encodable, Equatable, Sendable {
             try container.encodeIfPresent(settings.bertScore, forKey: .bertScore)
         case .capmas:
             try container.encode(BenchmarkAlgorithm.capmas, forKey: .algorithm)
-            try container.encode(0.5, forKey: .verificationThreshold)
+            try container.encode(CapMASBenchmarkExecutor.verificationThreshold, forKey: .verificationThreshold)
             try container.encode(
-                "randomBinary",
+                CapMASBenchmarkExecutor.classificationMethod,
                 forKey: .classificationMethod
             )
             try container.encode(
@@ -106,13 +135,17 @@ nonisolated enum BenchmarkAlgorithmSettings: Encodable, Equatable, Sendable {
     }
 }
 
-extension BenchmarkRunRequest {
+extension ResolvedBenchmarkRun {
     nonisolated var exportedSettings: BenchmarkSettings {
-        switch algorithmConfiguration {
+        let visionModel = request.visionModel
+        let textModel = request.textModel
+        let cooldownSeconds = request.cooldownSeconds
+        let prompt = request.prompt
+        return switch request.algorithmConfiguration {
         case .repack(let settings):
             BenchmarkSettings(
-                visionEngine: .vision(model: visionModel.choice),
-                textEngine: .text(model: textModel.choice),
+                visionEngine: .init(model: visionModel.choice, settings: visionSettings),
+                textEngine: .init(model: textModel.choice, settings: textSettings),
                 numSamples: settings.sampleCount,
                 cooldownSeconds: cooldownSeconds,
                 algorithmSettings: .repack(
@@ -121,11 +154,10 @@ extension BenchmarkRunRequest {
                         similarityThreshold: settings.similarityThreshold,
                         bertScore: settings.scoringMetric == .semanticSimilarity
                             ? BERTScoreExportSettings(
-                                implementation: "bertscore-f1-idf-layer16-v1",
-                                modelArtifact: EmbeddingModelResources.modelFilename,
-                                calibrationFile: (try? IDFCalibration.resolve(
-                                    visionModel: visionModel.url, textModel: textModel.url
-                                ))?.filename
+                                implementation: SemanticCaptionScorer.implementation,
+                                modelArtifact: embeddingResources?.modelURL.lastPathComponent
+                                    ?? EmbeddingModelResources.modelFilename,
+                                calibrationFile: calibration?.filename
                             ) : nil
                     )
                 ),
@@ -133,17 +165,17 @@ extension BenchmarkRunRequest {
             )
         case .capmas:
             BenchmarkSettings(
-                visionEngine: .vision(model: visionModel.choice),
-                textEngine: .text(model: textModel.choice),
-                numSamples: 1,
+                visionEngine: .init(model: visionModel.choice, settings: visionSettings),
+                textEngine: .init(model: textModel.choice, settings: textSettings),
+                numSamples: CapMASBenchmarkExecutor.sampleCount,
                 cooldownSeconds: cooldownSeconds,
                 algorithmSettings: .capmas,
                 prompt: prompt
             )
         case .taco(let sampleCount):
             BenchmarkSettings(
-                visionEngine: .vision(model: visionModel.choice),
-                textEngine: .text(model: textModel.choice),
+                visionEngine: .init(model: visionModel.choice, settings: visionSettings),
+                textEngine: .init(model: textModel.choice, settings: textSettings),
                 numSamples: sampleCount,
                 cooldownSeconds: cooldownSeconds,
                 algorithmSettings: .taco,

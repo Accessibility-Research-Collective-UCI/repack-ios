@@ -12,17 +12,17 @@ final class REPACKBenchmarkExecutor: BenchmarkAlgorithmExecuting {
         textModelURL: URL,
         prompt: CaptionPrompt,
         configuration: REPACKBenchmarkConfiguration,
+        embeddingResources: EmbeddingModelResources?,
+        calibration: IDFCalibration?,
         engineFactory: any EngineFactory,
         devicePolicy: DevicePolicy
     ) async throws {
         self.prompt = prompt
         self.configuration = configuration
-        let embeddingProvider = EmbeddingModelResources.available().map {
+        let embeddingProvider = embeddingResources.map {
             EmbeddingGemmaService(
                 resources: $0,
-                calibration: try? IDFCalibration.resolve(
-                    visionModel: visionModelURL, textModel: textModelURL
-                )
+                calibration: calibration
             )
         }
         pipeline = try await REPACKPipeline(

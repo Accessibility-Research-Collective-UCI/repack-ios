@@ -1138,6 +1138,8 @@ private struct Fixture {
 
 @MainActor
 private final class FakeEngineFactory: EngineFactory {
+    let visionSettings = InferenceEngineSettings.vision
+    let textSettings = InferenceEngineSettings.text
     enum Event: Equatable {
         case validate
         case makeVision
