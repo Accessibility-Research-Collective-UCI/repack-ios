@@ -22,13 +22,11 @@ final class LiteRTEngineFactory: EngineFactory {
 
     func makeVisionEngine(modelURL: URL) async throws -> any InferenceEngine {
         ExperimentalFlags.optIntoExperimentalAPIs()
-        ExperimentalFlags.enableSpeculativeDecoding = false
         return try await makeEngine(modelURL: modelURL, includesVision: true)
     }
 
     func makeTextEngine(modelURL: URL) async throws -> any InferenceEngine {
         ExperimentalFlags.optIntoExperimentalAPIs()
-        ExperimentalFlags.enableSpeculativeDecoding = true
         return try await makeEngine(modelURL: modelURL, includesVision: false)
     }
 
@@ -41,7 +39,8 @@ final class LiteRTEngineFactory: EngineFactory {
             backend: .gpu,
             visionBackend: includesVision ? .gpu : nil,
             maxNumTokens: 3072,
-            cacheDir: FileManager.default.temporaryDirectory.path
+            cacheDir: FileManager.default.temporaryDirectory.path,
+            speculativeDecodingConfig: .init(mode: .on)
         )
         let engine = Engine(engineConfig: configuration)
         try await engine.initialize()

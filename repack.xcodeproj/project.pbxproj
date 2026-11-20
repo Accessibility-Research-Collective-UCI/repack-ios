@@ -166,7 +166,7 @@
 			mainGroup = 22171F723013F12100756490;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				2217BE94301449ED00ECC1F0 /* XCLocalSwiftPackageReference "../LiteRT-LM" */,
+				2217BE94301449ED00ECC1F0 /* XCLocalSwiftPackageReference "../LiteRT-LM-Custom" */,
 				C0DE00000000000000000001 /* XCRemoteSwiftPackageReference "swift-huggingface" */,
 				EBED00000000000000000001 /* XCRemoteSwiftPackageReference "swift-sentencepiece" */,
 			);
@@ -740,9 +740,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		2217BE94301449ED00ECC1F0 /* XCLocalSwiftPackageReference "../LiteRT-LM" */ = {
+		2217BE94301449ED00ECC1F0 /* XCLocalSwiftPackageReference "../LiteRT-LM-Custom" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = "../LiteRT-LM";
+			relativePath = "../LiteRT-LM-Custom";
 		};
 /* End XCLocalSwiftPackageReference section */
 
