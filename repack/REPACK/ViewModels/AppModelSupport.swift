@@ -30,7 +30,7 @@ extension AppModel {
                 processingModelURL: processingModelURL,
                 engineFactory: engineFactory,
                 devicePolicy: devicePolicy,
-                embeddingProvider: EmbeddingModelResources.available().map {
+                embeddingProvider: embeddingProvider ?? EmbeddingModelResources.available().map {
                     EmbeddingGemmaService(
                         resources: $0,
                         calibration: try? IDFCalibration.resolve(
@@ -58,22 +58,19 @@ extension AppModel {
 
     func discardPipelineAndRun() async {
         outputRenderings.reset()
-        thresholdRequestID = UUID()
         currentRunID = nil
         let activeProcessTask = processTask
         processTask = nil
         activeProcessTask?.cancel()
-        thresholdTask?.cancel()
         captionExecutionCoordinator.complete(success: false)
         executionMode = nil
         await pipeline?.cancel()
-        thresholdTask = nil
+        await outputRenderings.finishCancellation()
         pipeline = nil
         result = nil
         progress = nil
         processStartedAt = nil
         completedElapsed = nil
-        isRegenerating = false
         MemoryDiagnostics.log("Pipeline discarded")
     }
 
@@ -108,14 +105,10 @@ extension AppModel {
         guard hasCompletedResult else { return }
 
         outputRenderings.reset()
-        thresholdRequestID = UUID()
-        thresholdTask?.cancel()
-        thresholdTask = nil
         result = nil
         progress = nil
         processStartedAt = nil
         completedElapsed = nil
-        isRegenerating = false
         errorMessage = nil
         pipeline?.discardCurrentRun()
 
@@ -128,19 +121,15 @@ extension AppModel {
 
     func resetCaptionState() {
         outputRenderings.reset()
-        thresholdRequestID = UUID()
-        thresholdTask?.cancel()
-        thresholdTask = nil
         result = nil
         progress = nil
         promptChoice = .describe
         customPrompt = ""
         sampleCount = 5
-        scoringMetric = defaultScoringMetric
+        scoringMetric = .semanticSimilarity
         threshold = scoringMetric.threshold.defaultValue
         processStartedAt = nil
         completedElapsed = nil
-        isRegenerating = false
         errorMessage = nil
         pipeline?.discardCurrentRun()
 
@@ -164,7 +153,6 @@ extension AppModel {
         image: URL,
         prompt: CaptionPrompt,
         count: Int,
-        threshold requestedThreshold: Double,
         scoringMetric: ScoringMetric
     ) {
         guard currentRunID == runID, processTask == nil else { return }
@@ -173,11 +161,17 @@ extension AppModel {
             guard let self else { return }
 
             do {
+                await outputRenderings.finishCancellation()
+                try Task.checkCancellation()
+                let calibration = try await loadCalibration(selectedCaptioningModel)
+                try Task.checkCancellation()
+                guard currentRunID == runID else { return }
+                self.calibration = calibration
                 let generatedResult = try await pipeline.process(
                     image: image,
                     samplePrompt: prompt,
                     sampleCount: count,
-                    threshold: requestedThreshold,
+                    threshold: calibration.threshold(certainty: 90),
                     scoringMetric: scoringMetric
                 ) { [weak self] update in
                     self?.progress = update
@@ -291,8 +285,8 @@ extension AppModel {
         promptChoice = restoredPromptChoice
         customPrompt = pendingRun.customPrompt
         sampleCount = pendingRun.sampleCount
-        scoringMetric = pendingRun.scoringMetric
-        threshold = scoringMetric.threshold.normalized(pendingRun.threshold)
+        scoringMetric = .semanticSimilarity
+        threshold = scoringMetric.threshold.defaultValue
         hasPendingCaptionRun = true
         return pendingRun
     }

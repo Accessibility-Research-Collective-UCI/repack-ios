@@ -1,13 +1,38 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "calibrationInvalid" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The certainty calibration is invalid. Repair the caption resources and try again."
+    "percentageStatementsTab" : {
+      "comment": "Short output tab label. The full representation name appears below the tabs.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Percentages"
+          }
+        }
+      }
+    },
+    "confidenceGroupsTab" : {
+      "comment": "Short output tab label. The full representation name appears below the tabs.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Groups"
+          }
+        }
+      }
+    },
+    "hedgingLanguageTab" : {
+      "comment": "Short output tab label. The full representation name appears below the tabs.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hedging"
           }
         }
       }
@@ -118,16 +143,10 @@
     "10" : {
 
     },
-    "A higher threshold only retains details that are more consistently supported across caption samples." : {
-
-    },
     "About %@ remaining" : {
 
     },
     "Active elapsed" : {
-
-    },
-    "Adjusts how consistently a detail must appear." : {
 
     },
     "Algorithm" : {
@@ -152,9 +171,6 @@
 
     },
     "Asks for confirmation before stopping the benchmark." : {
-
-    },
-    "Atomic" : {
 
     },
     "Atomic Statements and Scores" : {
@@ -183,9 +199,6 @@
 
     },
     "Background Download Unavailable" : {
-
-    },
-    "Based on our calibration of this model…" : {
 
     },
     "Before Starting" : {
@@ -221,6 +234,17 @@
     "Bundled with this Debug build" : {
 
     },
+    "calibrationInvalid" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The certainty calibration is invalid. Repair the caption resources and try again."
+          }
+        }
+      }
+    },
     "Camera" : {
 
     },
@@ -237,6 +261,9 @@
 
     },
     "CapMAS could not decompose the caption after six attempts." : {
+
+    },
+    "Caption" : {
 
     },
     "Caption Another Image" : {
@@ -259,6 +286,17 @@
     },
     "Caption updated." : {
 
+    },
+    "captionCertaintyCalibration" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Caption certainty calibration"
+          }
+        }
+      }
     },
     "Captioning did not finish. Restart Captioning to begin again from the start." : {
 
@@ -284,17 +322,58 @@
     "Captioning was stopped by the system. Restart Captioning to begin again from the start." : {
 
     },
-    "Changes the threshold by %@." : {
-
+    "captionWithCertainty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Caption with %lld%% Certainty"
+          }
+        }
+      }
+    },
+    "certainty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Certainty"
+          }
+        }
+      }
+    },
+    "certaintyPercentValue" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld percent"
+          }
+        }
+      }
     },
     "Choose an Image" : {
 
     },
-    "Compares atomic statements by meaning. Its tokenizer and IDF calibrations are also included." : {
+    "Compares atomic statements by meaning. Its tokenizer, IDF calibrations, and certainty calibration are also included." : {
 
     },
     "Completed image results will be retained, but the benchmark cannot be resumed." : {
 
+    },
+    "confidenceGroups" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confidence Groups"
+          }
+        }
+      }
     },
     "Cooling down" : {
 
@@ -315,9 +394,6 @@
 
     },
     "DEBUG: This download will temporarily use approximately %@. The downloaded test file will be deleted after validation." : {
-
-    },
-    "Decrease threshold" : {
 
     },
     "Delete Selected…" : {
@@ -345,9 +421,6 @@
 
     },
     "Download complete." : {
-
-    },
-    "Download Embedding Gemma before captioning." : {
 
     },
     "Download Failed" : {
@@ -417,9 +490,6 @@
     "Embedding Gemma 300M" : {
 
     },
-    "Embedding Gemma model files are not available." : {
-
-    },
     "Embedding Gemma tokenizer" : {
 
     },
@@ -463,9 +533,6 @@
     "Export JSON" : {
 
     },
-    "Finally, we are highly uncertain about…" : {
-
-    },
     "Gemma 4 E2B" : {
 
     },
@@ -493,20 +560,19 @@
     "Generating captions" : {
 
     },
-    "Generating hedged caption" : {
-
-    },
-    "Generating stratified captions" : {
-
-    },
     "Generation Details" : {
 
     },
-    "Hedged" : {
-
-    },
-    "Hedged Caption Unavailable" : {
-
+    "hedgingLanguage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hedging Language"
+          }
+        }
+      }
     },
     "Image" : {
 
@@ -527,12 +593,6 @@
 
     },
     "Imported Model" : {
-
-    },
-    "Included" : {
-
-    },
-    "Increase threshold" : {
 
     },
     "Information Verification" : {
@@ -655,16 +715,7 @@
     "Next image starts in %lld seconds." : {
 
     },
-    "No additional uncertain details at this threshold." : {
-
-    },
     "No atomic statement" : {
-
-    },
-    "No atomic statements are included at this threshold." : {
-
-    },
-    "No atomic statements are removed at this threshold." : {
 
     },
     "No atomic statements available." : {
@@ -676,11 +727,55 @@
     "No models are installed. Use Manage Installed Models to download one." : {
 
     },
+    "noHighlyLikelyInformation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We did not identify any highly likely information."
+          }
+        }
+      }
+    },
+    "noSomewhatLikelyInformation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We did not identify any somewhat likely information."
+          }
+        }
+      }
+    },
+    "noStatementsAvailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No statements are available."
+          }
+        }
+      }
+    },
     "Not installed" : {
 
     },
     "Not retained" : {
 
+    },
+    "noUnsureInformation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We did not identify any information we are unsure about."
+          }
+        }
+      }
     },
     "OK" : {
 
@@ -706,6 +801,17 @@
     "Overall benchmark progress" : {
 
     },
+    "percentageStatements" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Percentage Statements"
+          }
+        }
+      }
+    },
     "Photos" : {
 
     },
@@ -729,6 +835,17 @@
     },
     "Preparing vision model" : {
 
+    },
+    "preparingRepresentation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing representation…"
+          }
+        }
+      }
     },
     "Processes 25 bundled images with a 20-second cooldown between images." : {
 
@@ -770,9 +887,6 @@
     "Remove Models?" : {
 
     },
-    "Removed" : {
-
-    },
     "Removes the current caption and image." : {
 
     },
@@ -812,6 +926,17 @@
     "Repackaging the verified statements." : {
 
     },
+    "requestedCertaintyValue" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Requested certainty: %lld%%"
+          }
+        }
+      }
+    },
     "Required by %@" : {
 
     },
@@ -822,9 +947,6 @@
 
     },
     "Restart Captioning" : {
-
-    },
-    "Result: %@" : {
 
     },
     "Results" : {
@@ -920,9 +1042,6 @@
     "Similarity metric" : {
 
     },
-    "Similarity Scorer" : {
-
-    },
     "Similarity scoring complete." : {
 
     },
@@ -964,12 +1083,6 @@
 
     },
     "Stops the download and removes temporary files." : {
-
-    },
-    "Stratified" : {
-
-    },
-    "Stratified Captions Unavailable" : {
 
     },
     "TACO %@ produced no usable output after six attempts." : {
@@ -1047,12 +1160,6 @@
     "The vision model is not ready." : {
 
     },
-    "There is no information here that we are relatively certain about." : {
-
-    },
-    "There is no information which we think is highly unlikely." : {
-
-    },
     "There is not enough storage available. This download needs approximately %@, but %@ is available." : {
       "localizations" : {
         "en" : {
@@ -1111,9 +1218,6 @@
     "Verification samples" : {
 
     },
-    "Verification threshold" : {
-
-    },
     "View Results" : {
 
     },
@@ -1130,12 +1234,6 @@
 
     },
     "Waiting to start…" : {
-
-    },
-    "We are relatively certain that…" : {
-
-    },
-    "We are somewhat sure that…" : {
 
     }
   },

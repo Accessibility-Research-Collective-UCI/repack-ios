@@ -314,6 +314,14 @@ extension REPACKPipeline {
             from: cachedResult.scoredAtomics,
             threshold: threshold
         )
+        if retained == cachedResult.retainedAtomics {
+            let updated = cachedResult.replacingRepackage(
+                retainedAtomics: retained, caption: cachedResult.caption,
+                threshold: threshold, duration: .zero
+            )
+            self.cachedResult = updated
+            return updated
+        }
         let start = clock.now
         MemoryDiagnostics.log("Threshold regeneration started")
         let caption = try await repackage(
@@ -343,16 +351,21 @@ extension REPACKPipeline {
             throw PipelineError.missingTextEngine
         }
 
-        let data = try JSONEncoder().encode(atomics)
-        guard let encodedAtomics = String(data: data, encoding: .utf8) else {
-            throw AtomizationError.unableToEncodeInput
-        }
         return try nonempty(
             try await processingEngine.generateText(
                 systemPrompt: Prompts.hedgePrompt,
-                userPrompt: "Unverified visual statements:\n\(encodedAtomics)"
+                userPrompt: atomics.joined(separator: "\n")
             )
         )
+    }
+
+    func confidenceGroup(atomics: [String], prefix: String) async throws -> String {
+        try await prepareProcessingEngineIfNeeded()
+        guard let processingEngine else { throw PipelineError.missingTextEngine }
+        let prompt = "Required prefix phrase:\n\(prefix)\n\nStatements:\n\(atomics.joined(separator: "\n"))"
+        return try nonempty(try await processingEngine.generateText(
+            systemPrompt: Prompts.confidenceGroupPrompt, userPrompt: prompt
+        ))
     }
 
     func repackage(atomics: [String]) async throws -> String {

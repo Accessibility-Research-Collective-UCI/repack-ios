@@ -162,7 +162,9 @@ struct ImageStoreTests {
         #expect(model.promptChoice == .custom)
         #expect(model.customPrompt == "Describe the shipping label.")
         #expect(model.sampleCount == 7)
-        #expect(model.threshold == 0.65)
+        #expect(model.threshold == ScoringMetric.semanticSimilarity.threshold.defaultValue)
+        #expect(model.scoringMetric == .semanticSimilarity)
+        #expect(model.outputRenderings.requestedCertainty == 90)
         #expect(model.hasPendingCaptionRun)
         #expect(FileManager.default.fileExists(atPath: retainedURL.path))
         #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
@@ -174,8 +176,8 @@ struct ImageStoreTests {
         #expect(model.promptChoice == .describe)
         #expect(model.customPrompt.isEmpty)
         #expect(model.sampleCount == 5)
-        #expect(model.scoringMetric == model.defaultScoringMetric)
-        #expect(model.threshold == model.defaultScoringMetric.threshold.defaultValue)
+        #expect(model.scoringMetric == .semanticSimilarity)
+        #expect(model.threshold == ScoringMetric.semanticSimilarity.threshold.defaultValue)
         #expect(!FileManager.default.fileExists(atPath: retainedURL.path))
     }
 

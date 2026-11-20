@@ -46,16 +46,8 @@ struct REPACKTests {
     func defaultVerificationThreshold() {
         let viewModel = AppModel()
 
-        #expect(viewModel.threshold == 0.5)
-        #expect(viewModel.scoringMetric == .bleu)
-        #expect(
-            AppModel.defaultScoringMetric(embeddingModelInstalled: false)
-                == .bleu
-        )
-        #expect(
-            AppModel.defaultScoringMetric(embeddingModelInstalled: true)
-                == .semanticSimilarity
-        )
+        #expect(viewModel.threshold == 0.75)
+        #expect(viewModel.scoringMetric == .semanticSimilarity)
         #expect(ScoringMetric.bleu.title == "Lexical Similarity")
         #expect(ScoringMetric.bleu.threshold.range == 0...1)
         #expect(ScoringMetric.bleu.threshold.tickSpacing == 0.1)
@@ -85,35 +77,6 @@ struct REPACKTests {
 
         viewModel.scoringMetric = .bleu
         #expect(viewModel.threshold == 0.5)
-    }
-
-    @Test("Stratification calibrations cover every tier without overlap")
-    func stratificationCalibrations() {
-        let scores: [Double] = [0, 0.69, 0.7, 0.79, 0.8, 0.89, 0.9, 0.94, 0.95, 1]
-
-        for metric in ScoringMetric.allCases {
-            for model in DownloadableModel.imageCaptioningModels {
-                let calibration = metric.stratificationCalibration(for: model)
-                #expect(Set(calibration.ranges.keys) == Set(StratificationTier.allCases))
-                for score in scores {
-                    #expect(
-                        StratificationTier.allCases.count {
-                            calibration.range(for: $0).contains(score)
-                        } == 1
-                    )
-                }
-            }
-        }
-
-        let bleu = ScoringMetric.bleu.stratificationCalibration(for: .e2b)
-        #expect(bleu.range(for: .relativelyCertain).contains(0.95))
-        #expect(bleu.range(for: .somewhatSure).contains(0.7))
-        #expect(bleu.range(for: .highlyUncertain).contains(0.699_999))
-
-        let semantic = ScoringMetric.semanticSimilarity.stratificationCalibration(for: .e2b)
-        #expect(semantic.range(for: .relativelyCertain).contains(0.9))
-        #expect(semantic.range(for: .somewhatSure).contains(0.8))
-        #expect(semantic.range(for: .highlyUncertain).contains(0.799_999))
     }
 
     @Test("Hedging uses the shared text engine and preserves an empty input")
@@ -544,30 +507,25 @@ struct REPACKTests {
         #expect(abstention.contains("could not verify enough details"))
     }
 
-    @Test("Threshold debounce cancels stale requests and publishes the latest value")
+    @Test("Certainty changes replace stale requests and reuse unchanged statement sets")
     func thresholdDebounce() async throws {
-        let fixture = Fixture()
-        let viewModel = AppModel(engineFactory: fixture.factory)
-
-        await viewModel.selectModel(
-            LocalModel(url: fixture.modelURL, isBundled: false)
-        )
-        viewModel.scoringMetric = .bleu
-        viewModel.selectedImageURL = fixture.imageURL
-        viewModel.sampleCount = 2
-        viewModel.startProcessing()
-        try await waitUntil { viewModel.phase == .output }
-
-        let initialRepackages = fixture.factory.textState.repackagedAtomics.count
-        viewModel.updateThreshold(0.2)
+        let (fixture, viewModel) = try await completedViewModel()
+        let result = try #require(viewModel.result)
+        let pipeline = try #require(viewModel.pipeline)
+        let calibration = try certaintyFixture()
+        let controller = viewModel.outputRenderings
+        controller.setCertainty(20)
+        let first = Task {
+            await controller.prepare(result: result, pipeline: pipeline, calibration: calibration) { viewModel.result = $0 }
+        }
         try await Task.sleep(for: .milliseconds(100))
-        viewModel.updateThreshold(0.8)
-        try await Task.sleep(for: .milliseconds(800))
-
-        #expect(fixture.factory.textState.repackagedAtomics.count == initialRepackages + 1)
-        #expect(viewModel.result?.threshold == 0.8)
+        controller.setCertainty(80)
+        await controller.prepare(result: result, pipeline: pipeline, calibration: calibration) { viewModel.result = $0 }
+        await first.value
+        #expect(controller.displayedCertainty == 80)
+        #expect(viewModel.result?.threshold == calibration.threshold(certainty: 80))
         #expect(viewModel.result?.retainedAtomics == ["red can"])
-        #expect(!viewModel.isRegenerating)
+        #expect(fixture.factory.visionState.captionSeeds.count == 3)
     }
 
     @Test("Foreground-only captioning ignores inactive and cancels on background")
@@ -578,6 +536,8 @@ struct REPACKTests {
         let pendingRunStore = FakePendingCaptionRunStore()
         let viewModel = AppModel(
             engineFactory: fixture.factory,
+            embeddingProvider: FakeTextEmbeddingProvider(),
+            loadCalibration: { _ in try certaintyFixture() },
             captionExecutionCoordinator: executionCoordinator,
             pendingRunStore: pendingRunStore
         )
@@ -606,7 +566,7 @@ struct REPACKTests {
     @Test("Scene activation does not load a model without explicit selection")
     func modelLoadingRequiresExplicitSelection() async {
         let fixture = Fixture()
-        let viewModel = AppModel(engineFactory: fixture.factory)
+        let viewModel = AppModel(engineFactory: fixture.factory, embeddingProvider: FakeTextEmbeddingProvider(), loadCalibration: { _ in try certaintyFixture() })
         viewModel.modelURL = fixture.modelURL
         viewModel.localModels = [
             LocalModel(url: fixture.modelURL, isBundled: false)
@@ -631,7 +591,7 @@ struct REPACKTests {
     @Test("Model selection is visible before loading begins")
     func modelSelectionPrecedesLoading() async {
         let fixture = Fixture()
-        let viewModel = AppModel(engineFactory: fixture.factory)
+        let viewModel = AppModel(engineFactory: fixture.factory, embeddingProvider: FakeTextEmbeddingProvider(), loadCalibration: { _ in try certaintyFixture() })
         let localModel = LocalModel(url: fixture.modelURL, isBundled: false)
         viewModel.localModels = [localModel]
 
@@ -711,6 +671,8 @@ struct REPACKTests {
         let pendingRunStore = FakePendingCaptionRunStore()
         let viewModel = AppModel(
             engineFactory: fixture.factory,
+            embeddingProvider: FakeTextEmbeddingProvider(),
+            loadCalibration: { _ in try certaintyFixture() },
             captionExecutionCoordinator: executionCoordinator,
             pendingRunStore: pendingRunStore
         )
@@ -739,6 +701,8 @@ struct REPACKTests {
         let pendingRunStore = FakePendingCaptionRunStore()
         let viewModel = AppModel(
             engineFactory: fixture.factory,
+            embeddingProvider: FakeTextEmbeddingProvider(),
+            loadCalibration: { _ in try certaintyFixture() },
             captionExecutionCoordinator: executionCoordinator,
             pendingRunStore: pendingRunStore
         )
@@ -766,6 +730,8 @@ struct REPACKTests {
         let pendingRunStore = FakePendingCaptionRunStore()
         let viewModel = AppModel(
             engineFactory: fixture.factory,
+            embeddingProvider: FakeTextEmbeddingProvider(),
+            loadCalibration: { _ in try certaintyFixture() },
             captionExecutionCoordinator: executionCoordinator,
             pendingRunStore: pendingRunStore
         )
@@ -816,8 +782,11 @@ struct REPACKTests {
         #expect(viewModel.phase == .output)
         #expect(viewModel.result == initialResult)
 
-        viewModel.updateThreshold(0.8)
-        try await waitUntil { viewModel.result?.threshold == 0.8 }
+        viewModel.updateCertainty(80)
+        await viewModel.outputRenderings.prepare(
+            result: initialResult, pipeline: try #require(viewModel.pipeline), calibration: try certaintyFixture()
+        ) { viewModel.result = $0 }
+        #expect(viewModel.outputRenderings.displayedCertainty == 80)
 
         #expect(viewModel.phase == .output)
         #expect(viewModel.hasCompletedResult)
@@ -1029,13 +998,68 @@ struct REPACKTests {
         }
     }
 
+    @Test("Alternate renderings preserve Python partitions and cache completed output")
+    func uncertaintyRenderings() async throws {
+        let fixture = Fixture()
+        let pipeline = try await REPACKPipeline(modelURL: fixture.modelURL, engineFactory: fixture.factory)
+        let calibration = try certaintyFixture()
+        let scores = [1.0, calibration.threshold(certainty: 90), calibration.threshold(certainty: 80), 0.2]
+        let atomics = scores.enumerated().map {
+            ScoredAtomic(index: $0.offset, statement: "claim \($0.offset)", matches: [], averageScore: $0.element)
+        }
+        let result = CaptionResult(captions: [], atomizedCaptions: [], scoredAtomics: atomics,
+                                   retainedAtomics: ["claim 0", "claim 1"], caption: "initial caption",
+                                   threshold: calibration.threshold(certainty: 90), scoringMetric: .semanticSimilarity, timings: [])
+        let controller = OutputRenderingsController()
+        #expect(fixture.factory.textState.generatedTextRequests.isEmpty)
+        await controller.prepare(result: result, pipeline: pipeline, calibration: calibration) { _ in }
+        let requests = fixture.factory.textState.generatedTextRequests
+        #expect(requests.count == 4)
+        #expect(requests[0].systemPrompt == Prompts.confidenceGroupPrompt)
+        #expect(requests[0].userPrompt.hasSuffix("claim 0\nclaim 1"))
+        #expect(requests[1].userPrompt.hasSuffix("claim 2"))
+        #expect(requests[2].userPrompt.hasSuffix("claim 3"))
+        #expect(requests[3].systemPrompt == Prompts.hedgePrompt)
+        #expect(requests[3].userPrompt == "claim 1\nclaim 2\nclaim 3")
+        #expect(fixture.factory.textState.repackagedAtomics == [["claim 0"]])
+        #expect(controller.captions[.atomic]?.hasPrefix("100%: claim 0") == true)
+        #expect(controller.captions.count == 3)
+        controller.selection = .hedged
+        await controller.prepare(result: result, pipeline: pipeline, calibration: calibration) { _ in }
+        #expect(fixture.factory.textState.generatedTextRequests.count == requests.count)
+    }
+
+    @Test("A failed representation does not hide successful output and retries independently")
+    func renderingRetry() async throws {
+        let fixture = Fixture()
+        fixture.factory.textState.failConfidenceGroup = true
+        let pipeline = try await REPACKPipeline(modelURL: fixture.modelURL, engineFactory: fixture.factory)
+        let calibration = try certaintyFixture()
+        let result = CaptionResult(captions: [], atomizedCaptions: [],
+            scoredAtomics: [ScoredAtomic(index: 0, statement: "claim", matches: [], averageScore: 0.95)],
+            retainedAtomics: ["claim"], caption: "claim", threshold: calibration.threshold(certainty: 90),
+            scoringMetric: .semanticSimilarity, timings: [])
+        let controller = OutputRenderingsController()
+        await controller.prepare(result: result, pipeline: pipeline, calibration: calibration) { _ in }
+        #expect(controller.errors[.stratified] != nil)
+        #expect(controller.captions[.hedged] == "claim")
+        #expect(controller.captions[.atomic] != nil)
+        fixture.factory.textState.failConfidenceGroup = false
+        controller.selection = .stratified
+        controller.retry()
+        await controller.prepare(result: result, pipeline: pipeline, calibration: calibration) { _ in }
+        #expect(controller.errors.isEmpty)
+        #expect(controller.captions[.stratified]?.contains(OutputRenderingsController.emptyGroups[1]) == true)
+        #expect(controller.captions[.hedged] == "claim")
+    }
+
     private func completedViewModel(
         promptChoice: AppModel.PromptChoice = .describe,
         customPrompt: String = "",
         sampleCount: Int = 2
     ) async throws -> (Fixture, AppModel) {
         let fixture = Fixture()
-        let viewModel = AppModel(engineFactory: fixture.factory)
+        let viewModel = AppModel(engineFactory: fixture.factory, embeddingProvider: FakeTextEmbeddingProvider(), loadCalibration: { _ in try certaintyFixture() })
 
         await viewModel.selectModel(
             LocalModel(url: fixture.modelURL, isBundled: false)
@@ -1130,6 +1154,10 @@ private final class FakeEngineState {
     var repackagedAtomics: [[String]] = []
     var generatedTextRequests: [(systemPrompt: String, userPrompt: String)] = []
     var generatedTextResponse = "hedged caption"
+    var textDelay: Duration?
+    var failConfidenceGroup = false
+    var activeTextRequests = 0
+    var maximumConcurrentTextRequests = 0
     var cancellationCount = 0
     var captionDelay: Duration?
     var atomizationDelay: Duration?
@@ -1193,7 +1221,14 @@ private final class FakeInferenceEngine: InferenceEngine {
     }
 
     func generateText(systemPrompt: String, userPrompt: String) async throws -> String {
+        state.activeTextRequests += 1
+        state.maximumConcurrentTextRequests = max(state.maximumConcurrentTextRequests, state.activeTextRequests)
+        defer { state.activeTextRequests -= 1 }
+        if let delay = state.textDelay { try await Task.sleep(for: delay) }
         state.generatedTextRequests.append((systemPrompt, userPrompt))
+        if state.failConfidenceGroup, systemPrompt == Prompts.confidenceGroupPrompt {
+            throw PipelineError.emptyModelResponse
+        }
         return state.generatedTextResponse
     }
 
@@ -1377,4 +1412,16 @@ private func hasConsecutiveCaptionSeeds(_ seeds: [Int], count: Int) -> Bool {
     return seeds.enumerated().allSatisfy { offset, seed in
         seed == first + offset
     }
+}
+
+nonisolated private func certaintyFixture() throws -> ConformalCalibration {
+    let table: [String: [Double]] = [
+        "risk_tolerances": (0...1000).map { Double($0) / 1000 },
+        "proposed_thresholds": (0...1000).map { 1 - Double($0) / 1000 }
+    ]
+    let data = try JSONSerialization.data(withJSONObject: [
+        "similarity_key": "atomic_similarity", "delta": 0.05,
+        "models": ["gemma-4-e2b": table, "gemma-4-e4b": table]
+    ])
+    return try ConformalCalibration(data: data, model: .e2b)
 }

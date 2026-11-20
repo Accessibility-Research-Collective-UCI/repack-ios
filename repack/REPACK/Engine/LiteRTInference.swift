@@ -112,14 +112,9 @@ final class LiteRTInferenceEngine: InferenceEngine {
     }
 
     func repackage(atomics: [String]) async throws -> String {
-        let data = try JSONEncoder().encode(atomics)
-        guard let encodedAtomics = String(data: data, encoding: .utf8) else {
-            throw AtomizationError.unableToEncodeInput
-        }
-
-        return try await generateText(
+        try await generateText(
             systemPrompt: Prompts.repackagePrompt,
-            userPrompt: "Atomic statements:\n\(encodedAtomics)"
+            userPrompt: atomics.joined(separator: "\n")
         )
     }
 
