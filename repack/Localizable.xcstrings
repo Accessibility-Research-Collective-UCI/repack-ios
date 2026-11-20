@@ -1,6 +1,66 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "benchmarkVisionEngineSummary": {
+      "comment": "Benchmark vision engine configuration: backend, vision backend, and MTP state.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vision: %@. Vision backend: %@. MTP: %@."
+          }
+        }
+      }
+    },
+    "benchmarkTextEngineSummary": {
+      "comment": "Benchmark text engine configuration: backend, vision backend, and MTP state.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text: %@. Vision backend: %@. MTP: %@."
+          }
+        }
+      }
+    },
+    "benchmarkBackendNone": {
+      "comment": "An engine has no vision backend.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None"
+          }
+        }
+      }
+    },
+    "benchmarkMTPEnabled": {
+      "comment": "Multi-token prediction is enabled for this engine.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enabled"
+          }
+        }
+      }
+    },
+    "benchmarkMTPDisabled": {
+      "comment": "Multi-token prediction is disabled for this engine.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disabled"
+          }
+        }
+      }
+    },
     "highConfidencePrefix" : {
       "comment": "Visible certainty label for an uncertainty representation.",
       "extractionState": "manual",
@@ -1246,12 +1306,6 @@
 
     },
     "Updating caption…" : {
-
-    },
-    "Uses GPU for language and vision inference. Multi-token prediction is disabled." : {
-
-    },
-    "Uses GPU for language inference. Vision is disabled and multi-token prediction is enabled." : {
 
     },
     "Uses REPACK’s default threshold for the selected similarity metric." : {
